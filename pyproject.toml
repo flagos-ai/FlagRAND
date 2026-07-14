@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "FlagRAND"
+version = "0.1.0"
+description = "Philox Host API implementation with Triton."
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "triton",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["flagrand*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--basetemp=.pytest_tmp"
