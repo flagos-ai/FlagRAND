@@ -1,18 +1,22 @@
 # FlagRand Philox 部分 PR：沐曦运行指南
 
+PPU-ZW810E 请看 `PPU_RUN_GUIDE.md`，使用 `ppu_flagrand_matrix.py` 和 `ppu_matrix/`。
+本文件保留给沐曦/MACA 路径，入口是 `muxi_flagrand_matrix.py`。
+
 本次测试对象固定为：
 
 | Host API | 输出 dtype | 数量约束 |
 |---|---|---:|
-| `generate` | `int32` | 4 的倍数 |
-| `generate_uniform` | `float32` | 4 的倍数 |
-| `generate_uniform_double` | `float64` | 2 的倍数 |
-| `generate_normal` | `float32` | 4 的倍数 |
+| `generate` | `int32` | 任意非负整数 |
+| `generate_uniform` | `float32` | 任意非负整数 |
+| `generate_uniform_double` | `float64` | 任意非负整数 |
+| `generate_normal` | `float32` | 偶数 |
 | `generate_normal_double` | `float64` | 2 的倍数 |
-| `generate_lognormal` | `float32` | 4 的倍数 |
+| `generate_lognormal` | `float32` | 偶数 |
 | `generate_lognormal_double` | `float64` | 2 的倍数 |
 
-Torch 数字只作为同一设备上的平台参考，不表示算法等价。
+Torch 数字只作为同一设备上的平台参考，不表示算法等价。Muxi 入口默认跳过
+PPU cuRAND baseline；如需强制运行，可加 `--with-ppu-curand`。
 
 ## 1. 准备代码
 
@@ -87,7 +91,7 @@ python muxi_flagrand_matrix.py --preflight-only
 检验会依次完成：
 
 1. 编译并执行 seed=0 的 Philox raw32 已知向量；
-2. 对七种输出分别验证一次生成 4096 个元素，是否与连续两次各生成 2048 个元素完全一致；
+2. 对七种输出分别验证非 4 倍数 split，确认连续调用后的任意 offset 正确；
 3. 验证 seed、offset 和 Host API 状态推进在沐曦后端上没有被破坏。
 
 预期输出包含：
@@ -114,8 +118,8 @@ full 的元素数量为：
 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216
 ```
 
-产生 49 个 FlagRand case；启用 Torch 参考时，为每种规模运行六个 RNG
-参考和四个纯写参考。需要临时缩小范围时可以使用：
+产生 49 个 FlagRAND case。启用 Torch 参考时，为每种规模运行六个 RNG 参考和四个
+纯写参考。需要临时缩小范围时可以使用：
 
 ```bash
 python muxi_flagrand_matrix.py \
@@ -125,10 +129,60 @@ python muxi_flagrand_matrix.py \
   --skip-torch-reference
 ```
 
-`--sizes` 中的数字必须为正数且能被 4 整除，这样七种 API 都满足当前版本的
-向量化约束。
+`--sizes` 中的数字只要求为正数；normal/lognormal 的奇数长度会被跳过。泛用性组可
+分两次运行：
 
-## 6. 沐曦兼容层做了什么
+```bash
+python muxi_flagrand_matrix.py \
+  --profile smoke \
+  --distributions raw32,uniform_f32,uniform_f64 \
+  --sizes 1,2,3,5,7,4097,65537,1048577 \
+  --skip-torch-reference
+
+python muxi_flagrand_matrix.py \
+  --profile smoke \
+  --distributions normal_f32,normal_f64,lognormal_f32,lognormal_f64 \
+  --sizes 2,6,4098,65538,1048578 \
+  --skip-torch-reference
+```
+
+如果需要在 Muxi 入口里临时跑 PPU cuRAND，可加 `--with-ppu-curand`，通常不建议。
+
+## 6. LibTuner A/B
+
+手工配置基线：
+
+```bash
+export FLAGRAND_USE_LIBTUNER=0
+python muxi_flagrand_matrix.py \
+  --profile full \
+  --skip-torch-reference \
+  --results-dir muxi_results/manual
+```
+
+第一次 LibTuner 运行用于搜索，不能直接与基线比较：
+
+```bash
+export FLAGRAND_USE_LIBTUNER=1
+export TRITON_PRINT_AUTOTUNING=1
+python muxi_flagrand_matrix.py \
+  --profile full \
+  --skip-torch-reference \
+  --results-dir muxi_results/libtuner_warmup
+```
+
+第二次读取缓存后正式计时：
+
+```bash
+export FLAGRAND_USE_LIBTUNER=1
+unset TRITON_PRINT_AUTOTUNING
+python muxi_flagrand_matrix.py \
+  --profile full \
+  --skip-torch-reference \
+  --results-dir muxi_results/libtuner_hot
+```
+
+## 7. 沐曦兼容层做了什么
 
 兼容逻辑在 Triton target backend 为 `maca` 时有效：
 
@@ -139,7 +193,7 @@ python muxi_flagrand_matrix.py \
 因此验收目标是
 Philox 流推进一致、分段与整段一致，并通过分布统计检查。
 
-## 7. 结果目录
+## 8. 结果目录
 
 每次运行都会新建：
 

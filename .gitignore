@@ -1,10 +1,15 @@
 __pycache__/
 *.py[cod]
+.DS_Store
+._*
 .pytest_cache/
 .pytest_tmp/
 .cache/
 .triton_cache/
+.triton_cache*/
 build/
 dist/
 *.egg-info/
 muxi_results/
+ppu_logs/
+ppu_results/

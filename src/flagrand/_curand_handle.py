@@ -84,9 +84,6 @@ def _validate_seed(seed: int) -> int:
 
 def _validate_offset(offset: int) -> int:
     value = int(offset)
-    if value < 0 or value % 4:
-        raise ValueError(
-            "Philox offset is measured in uint32 outputs and must be a "
-            f"non-negative multiple of 4, got {offset!r}."
-        )
+    if value < 0:
+        raise ValueError(f"Philox offset must be non-negative, got {offset!r}.")
     return value

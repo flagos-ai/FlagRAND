@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import torch
 
+from flagrand.runtime import use_libtuner
 from flagrand._curand_handle import (
     CURAND_RNG_PSEUDO_PHILOX4_32_10,
     CurandGenerator,
@@ -30,13 +31,14 @@ def try_generate_raw(
     prepared = _prepare(generator, out, kwargs)
     if prepared is None:
         return False
-    engine, block_size, num_warps = prepared
+    engine, block_size, num_warps, manual_config = prepared
     if out.numel():
         generate_philox_raw_u32(
             out,
             engine,
             block_size=block_size,
             num_warps=num_warps,
+            use_libtuner_kernel=use_libtuner() and not manual_config,
         )
     return True
 
@@ -49,7 +51,7 @@ def try_generate_uniform(
     prepared = _prepare(generator, out, kwargs)
     if prepared is None:
         return False
-    engine, block_size, num_warps = prepared
+    engine, block_size, num_warps, manual_config = prepared
     if out.numel() == 0:
         return True
     operation = (
@@ -62,6 +64,11 @@ def try_generate_uniform(
         engine,
         block_size=block_size,
         num_warps=num_warps,
+        **(
+            {"use_libtuner_kernel": True}
+            if out.dtype == torch.float32 and use_libtuner() and not manual_config
+            else {}
+        ),
     )
     return True
 
@@ -78,7 +85,7 @@ def try_generate_normal(
     prepared = _prepare(generator, out, kwargs)
     if prepared is None:
         return False
-    engine, block_size, num_warps = prepared
+    engine, block_size, num_warps, manual_config = prepared
     if not kwargs and out.dtype == torch.float64:
         block_size, num_warps = _PHILOX_F64_NORMAL_CONFIG
     if out.numel() == 0:
@@ -102,6 +109,16 @@ def try_generate_normal(
         stddev=stddev,
         block_size=block_size,
         num_warps=num_warps,
+        **(
+            {"use_libtuner_kernel": True}
+            if (
+                use_libtuner()
+                and not manual_config
+                and not lognormal
+                and out.dtype in {torch.float32, torch.float64}
+            )
+            else {}
+        ),
     )
     return True
 
@@ -110,7 +127,7 @@ def _prepare(
     generator: object,
     out: torch.Tensor,
     kwargs: dict[str, object],
-) -> tuple[PhiloxGenerator, int, int] | None:
+) -> tuple[PhiloxGenerator, int, int, bool] | None:
     if (
         not isinstance(generator, CurandGenerator)
         or generator.rng_type != CURAND_RNG_PSEUDO_PHILOX4_32_10
@@ -119,7 +136,7 @@ def _prepare(
     config = _launch_config(kwargs)
     if config is None or out.device.type != "cuda" or not out.is_contiguous():
         return None
-    return generator.engine, config[0], config[1]
+    return generator.engine, config[0], config[1], bool(kwargs)
 
 
 def _launch_config(kwargs: dict[str, object]) -> tuple[int, int] | None:

@@ -155,13 +155,17 @@ def _launch_entry(
 
 
 def _requires_regular_jit(kernel: Any) -> bool:
+    runtime_knobs = getattr(knobs, "runtime", None)
+    compilation_knobs = getattr(knobs, "compilation", None)
+    launch_enter_hook = getattr(runtime_knobs, "launch_enter_hook", None)
+    launch_exit_hook = getattr(runtime_knobs, "launch_exit_hook", None)
     return bool(
         not supports_cached_binary_launch()
         or kernel.pre_run_hooks
-        or getattr(knobs.runtime.launch_enter_hook, "calls", ())
-        or getattr(knobs.runtime.launch_exit_hook, "calls", ())
-        or knobs.compilation.instrumentation_mode
-        or knobs.runtime.add_stages_inspection_hook is not None
+        or getattr(launch_enter_hook, "calls", ())
+        or getattr(launch_exit_hook, "calls", ())
+        or getattr(compilation_knobs, "instrumentation_mode", False)
+        or getattr(runtime_knobs, "add_stages_inspection_hook", None) is not None
         or kernel.launch_metadata is not None
     )
 

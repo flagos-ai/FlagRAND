@@ -38,9 +38,9 @@ def test_raw_matches_known_seed_zero_vector() -> None:
 
 
 def test_raw_split_matches_bulk_across_launcher_specializations() -> None:
-    bulk = torch.empty(136, device="cuda", dtype=torch.int32)
-    first = torch.empty(68, device="cuda", dtype=torch.int32)
-    second = torch.empty(68, device="cuda", dtype=torch.int32)
+    bulk = torch.empty(17, device="cuda", dtype=torch.int32)
+    first = torch.empty(5, device="cuda", dtype=torch.int32)
+    second = torch.empty(12, device="cuda", dtype=torch.int32)
 
     curand.generate(curand.create_generator(seed=17), bulk)
     split_generator = curand.create_generator(seed=17)
@@ -53,13 +53,13 @@ def test_raw_split_matches_bulk_across_launcher_specializations() -> None:
 
 def test_offset_selects_the_same_raw_subsequence() -> None:
     bulk = torch.empty(128, device="cuda", dtype=torch.int32)
-    tail = torch.empty(64, device="cuda", dtype=torch.int32)
+    tail = torch.empty(17, device="cuda", dtype=torch.int32)
 
     curand.generate(curand.create_generator(seed=23), bulk)
-    curand.generate(curand.create_generator(seed=23, offset=64), tail)
+    curand.generate(curand.create_generator(seed=23, offset=5), tail)
     torch.cuda.synchronize()
 
-    assert torch.equal(tail, bulk[64:])
+    assert torch.equal(tail, bulk[5:22])
 
 
 def test_large_seed_and_unaligned_contiguous_output() -> None:
@@ -113,9 +113,10 @@ def test_uniform_split_matches_bulk(dtype: torch.dtype) -> None:
         if dtype == torch.float64
         else curand.generate_uniform
     )
-    bulk = torch.empty(8192, device="cuda", dtype=dtype)
-    first = torch.empty(4096, device="cuda", dtype=dtype)
-    second = torch.empty_like(first)
+    n, first_n = (9, 3) if dtype == torch.float64 else (17, 5)
+    bulk = torch.empty(n, device="cuda", dtype=dtype)
+    first = torch.empty(first_n, device="cuda", dtype=dtype)
+    second = torch.empty(n - first_n, device="cuda", dtype=dtype)
 
     operation(curand.create_generator(seed=45), bulk)
     split_generator = curand.create_generator(seed=45)
@@ -126,19 +127,20 @@ def test_uniform_split_matches_bulk(dtype: torch.dtype) -> None:
 
 def test_distribution_offsets_count_consumed_raw_uint32_words() -> None:
     cases = (
-        (curand.generate_uniform, torch.float32, {}, 8),
-        (curand.generate_uniform_double, torch.float64, {}, 16),
-        (curand.generate_normal, torch.float32, {"mean": 0.0, "stddev": 1.0}, 8),
+        (curand.generate_uniform, torch.float32, 5, {}, 5),
+        (curand.generate_uniform_double, torch.float64, 9, {}, 18),
+        (curand.generate_normal, torch.float32, 6, {"mean": 0.0, "stddev": 1.0}, 6),
         (
             curand.generate_normal_double,
             torch.float64,
+            8,
             {"mean": 0.0, "stddev": 1.0},
             16,
         ),
     )
-    for operation, dtype, kwargs, expected_offset in cases:
+    for operation, dtype, n, kwargs, expected_offset in cases:
         generator = curand.create_generator(seed=46)
-        out = torch.empty(8, device="cuda", dtype=dtype)
+        out = torch.empty(n, device="cuda", dtype=dtype)
         operation(generator, out, **kwargs)
         assert generator.offset == expected_offset
 
@@ -170,7 +172,8 @@ def test_normal_and_lognormal_statistics(dtype: torch.dtype) -> None:
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_normal_and_lognormal_split_match_bulk(dtype: torch.dtype) -> None:
-    n = 8192
+    n = 8194 if dtype == torch.float32 else 8192
+    first_n = 6 if dtype == torch.float32 else n // 2
     normal_op = curand.generate_normal_double if dtype == torch.float64 else curand.generate_normal
     lognormal_op = (
         curand.generate_lognormal_double
@@ -180,8 +183,8 @@ def test_normal_and_lognormal_split_match_bulk(dtype: torch.dtype) -> None:
 
     for operation, seed in ((normal_op, 59), (lognormal_op, 61)):
         bulk = torch.empty(n, device="cuda", dtype=dtype)
-        first = torch.empty(n // 2, device="cuda", dtype=dtype)
-        second = torch.empty_like(first)
+        first = torch.empty(first_n, device="cuda", dtype=dtype)
+        second = torch.empty(n - first_n, device="cuda", dtype=dtype)
         operation(curand.create_generator(seed=seed), bulk, mean=0.2, stddev=0.5)
         split_generator = curand.create_generator(seed=seed)
         operation(split_generator, first, mean=0.2, stddev=0.5)
@@ -222,11 +225,47 @@ def test_portable_f32_math_path(operation, lognormal: bool) -> None:
     assert abs(float(values.std()) - 1.0) < 0.02
 
 
+@pytest.mark.parametrize(
+    ("operation", "dtype", "n", "kwargs"),
+    (
+        (curand.generate, torch.int32, 17, {}),
+        (curand.generate_uniform, torch.float32, 17, {}),
+        (curand.generate_uniform_double, torch.float64, 9, {}),
+        (curand.generate_normal, torch.float32, 18, {"mean": 0.0, "stddev": 1.0}),
+        (
+            curand.generate_normal_double,
+            torch.float64,
+            18,
+            {"mean": 0.0, "stddev": 1.0},
+        ),
+        (curand.generate_lognormal, torch.float32, 18, {"mean": 0.0, "stddev": 1.0}),
+        (
+            curand.generate_lognormal_double,
+            torch.float64,
+            18,
+            {"mean": 0.0, "stddev": 1.0},
+        ),
+    ),
+)
+@pytest.mark.parametrize("offset", [0, 1, 2, 3, 4, 5, 6, 7])
+def test_arbitrary_start_offsets_are_reproducible(operation, dtype, n, kwargs, offset: int) -> None:
+    expected = torch.empty(n, device="cuda", dtype=dtype)
+    actual = torch.empty_like(expected)
+
+    operation(curand.create_generator(seed=65, offset=offset), expected, **kwargs)
+    operation(curand.create_generator(seed=65, offset=offset), actual, **kwargs)
+    torch.cuda.synchronize()
+
+    assert torch.equal(expected, actual)
+
+
 def test_shape_and_layout_contract_errors() -> None:
-    with pytest.raises(ValueError, match="multiple of 4"):
-        curand.generate(
+    with pytest.raises(ValueError, match="even element count"):
+        curand.generate_normal(
             curand.create_generator(),
-            torch.empty(6, device="cuda", dtype=torch.int32),
+            torch.empty(3, device="cuda", dtype=torch.float32),
+            mean=0.0,
+            stddev=1.0,
         )
     with pytest.raises(ValueError, match="even element count"):
         curand.generate_normal_double(

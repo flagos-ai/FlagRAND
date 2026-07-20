@@ -37,10 +37,10 @@ def test_public_surface_is_philox_only() -> None:
 
 @pytest.mark.parametrize("name", ["philox", "philox4_32_10", curand.CURAND_RNG_PSEUDO_PHILOX4_32_10])
 def test_create_generator_accepts_philox_names(name: str) -> None:
-    generator = curand.create_generator(name, seed=7, offset=8)
+    generator = curand.create_generator(name, seed=7, offset=7)
     assert isinstance(generator.engine, PhiloxGenerator)
     assert generator.seed == 7
-    assert generator.offset == 8
+    assert generator.offset == 7
 
 
 def test_create_generator_rejects_unshipped_generator() -> None:
@@ -54,11 +54,11 @@ def test_seed_and_offset_mutators_validate_and_update_state() -> None:
     assert generator.seed == 99
     assert generator.offset == 0
 
-    curand.set_generator_offset(generator, 32)
-    assert generator.offset == 32
+    curand.set_generator_offset(generator, 3)
+    assert generator.offset == 3
 
-    with pytest.raises(ValueError, match="multiple of 4"):
-        curand.set_generator_offset(generator, 3)
+    with pytest.raises(ValueError, match="non-negative"):
+        curand.set_generator_offset(generator, -1)
     with pytest.raises(ValueError, match=r"2\^64-1"):
         curand.set_pseudo_random_generator_seed(generator, 1 << 64)
 

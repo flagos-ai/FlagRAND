@@ -23,16 +23,22 @@ def measure(operation: Callable[[], Any], profile: Profile) -> dict[str, float |
 
     total_samples: list[float] = []
     enqueue_samples: list[float] = []
+    device_samples: list[float] = []
     for _ in range(profile.repeats):
         torch.cuda.synchronize()
+        event_start = torch.cuda.Event(enable_timing=True)
+        event_end = torch.cuda.Event(enable_timing=True)
+        event_start.record()
         start = time.perf_counter()
         for _ in range(calls):
             operation()
         enqueue_end = time.perf_counter()
+        event_end.record()
         torch.cuda.synchronize()
         end = time.perf_counter()
         enqueue_samples.append((enqueue_end - start) * 1e6 / calls)
         total_samples.append((end - start) * 1e3 / calls)
+        device_samples.append(event_start.elapsed_time(event_end) / calls)
 
     return {
         "timing_calls_per_repeat": calls,
@@ -40,4 +46,7 @@ def measure(operation: Callable[[], Any], profile: Profile) -> dict[str, float |
         "total_ms_median": statistics.median(total_samples),
         "total_ms_min": min(total_samples),
         "total_ms_max": max(total_samples),
+        "device_ms_median": statistics.median(device_samples),
+        "device_ms_min": min(device_samples),
+        "device_ms_max": max(device_samples),
     }
