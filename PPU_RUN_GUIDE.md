@@ -47,6 +47,19 @@ Expected result: preflight passes and pytest reports all tests passed.
 
 ## 3. Performance
 
+Acceptance one-command profile:
+
+```bash
+python ppu_flagrand_matrix.py \
+  --profile full \
+  --acceptance-profile \
+  --skip-torch-reference \
+  --results-dir ppu_results/acceptance \
+  2>&1 | tee ppu_logs/acceptance.log
+```
+
+This runs only the configured acceptance shapes, prints one speedup per API, and does not report a cross-API average. The default target range is `0.95x` to `1.50x` against native PPU `acrand`.
+
 Raw/Uniform odd and boundary shapes:
 
 ```bash

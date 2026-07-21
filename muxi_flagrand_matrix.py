@@ -19,7 +19,13 @@ from muxi_matrix.compat import (
     verify_preview_source,
 )
 from muxi_matrix.config import parse_args
-from muxi_matrix.reporting import create_run_directory, print_record, write_results
+from muxi_matrix.reporting import (
+    build_acceptance_summary,
+    create_run_directory,
+    print_acceptance_summary,
+    print_record,
+    write_results,
+)
 
 
 def main(
@@ -47,6 +53,11 @@ def main(
         "skip_ppu_acrand": args.skip_ppu_acrand,
         "skip_torch_reference": args.skip_torch_reference,
         "platform": platform_name,
+        "acceptance_profile": args.acceptance_profile,
+        "acceptance_baseline": args.acceptance_baseline,
+        "acceptance_min": args.acceptance_min,
+        "acceptance_max": args.acceptance_max,
+        "acceptance_shape_map": args.acceptance_shape_map,
     }
     records: list[dict[str, Any]] = []
 
@@ -83,42 +94,59 @@ def main(
             print(f"Results: {run_directory}")
             return 0
 
-        for n in args.profile_config.sizes:
-            for distribution in args.distributions:
-                if not _supports_size(distribution, n):
-                    print(f"SKIP {distribution:<15} N={n:<9} requires an even element count")
-                    continue
-                record = run_flagrand_case(distribution, n, args.seed, args.profile_config)
-                ppu_record = None
-                acrand_record = None
-                if not args.skip_ppu_curand:
-                    ppu_record = run_ppu_curand_case(
-                        distribution,
-                        n,
-                        args.seed,
-                        args.profile_config,
-                    )
-                    _annotate_ppu_speedup(record, ppu_record)
-                if not args.skip_ppu_acrand:
-                    acrand_record = run_ppu_acrand_case(
-                        distribution,
-                        n,
-                        args.seed,
-                        args.profile_config,
-                    )
-                    _annotate_ppu_acrand_speedup(record, acrand_record)
-                records.append(record)
-                print_record(record)
-                if ppu_record is not None:
-                    records.append(ppu_record)
-                    print_record(ppu_record)
-                if acrand_record is not None:
-                    records.append(acrand_record)
-                    print_record(acrand_record)
+        if args.acceptance_profile:
+            _print_acceptance_shape_plan(args)
+
+        reference_sizes: set[int] = set()
+        for distribution, n in _iter_matrix_cases(args):
+            if not _supports_size(distribution, n):
+                print(f"SKIP {distribution:<15} N={n:<9} requires an even element count")
+                continue
+            record = run_flagrand_case(distribution, n, args.seed, args.profile_config)
+            ppu_record = None
+            acrand_record = None
+            if not args.skip_ppu_curand:
+                ppu_record = run_ppu_curand_case(
+                    distribution,
+                    n,
+                    args.seed,
+                    args.profile_config,
+                )
+                _annotate_ppu_speedup(record, ppu_record)
+            if not args.skip_ppu_acrand:
+                acrand_record = run_ppu_acrand_case(
+                    distribution,
+                    n,
+                    args.seed,
+                    args.profile_config,
+                )
+                _annotate_ppu_acrand_speedup(record, acrand_record)
+            records.append(record)
+            print_record(record)
+            if ppu_record is not None:
+                records.append(ppu_record)
+                print_record(ppu_record)
+            if acrand_record is not None:
+                records.append(acrand_record)
+                print_record(acrand_record)
             if not args.skip_torch_reference:
+                if n in reference_sizes:
+                    continue
+                reference_sizes.add(n)
                 for record in run_torch_references(n, args.profile_config):
                     records.append(record)
                     print_record(record)
+
+        if args.acceptance_profile:
+            manifest["acceptance_summary"] = build_acceptance_summary(
+                records,
+                distributions=args.distributions,
+                shape_map=args.acceptance_shape_map,
+                baseline=args.acceptance_baseline,
+                min_speedup=args.acceptance_min,
+                max_speedup=args.acceptance_max,
+            )
+            print_acceptance_summary(manifest["acceptance_summary"])
     except Exception as exc:
         manifest["fatal_error"] = {
             "type": type(exc).__name__,
@@ -141,6 +169,31 @@ def _supports_size(distribution: str, n: int) -> bool:
     if distribution.startswith("normal") or distribution.startswith("lognormal"):
         return n % 2 == 0
     return True
+
+
+def _iter_matrix_cases(args: Any) -> list[tuple[str, int]]:
+    if args.acceptance_profile:
+        return [
+            (distribution, n)
+            for distribution in args.distributions
+            for n in args.acceptance_shape_map[distribution]
+        ]
+    return [
+        (distribution, n)
+        for n in args.profile_config.sizes
+        for distribution in args.distributions
+    ]
+
+
+def _print_acceptance_shape_plan(args: Any) -> None:
+    print(
+        "Acceptance shape plan "
+        f"baseline={args.acceptance_baseline} "
+        f"target=[{args.acceptance_min:.2f}, {args.acceptance_max:.2f}]"
+    )
+    for distribution in args.distributions:
+        shapes = ",".join(str(n) for n in args.acceptance_shape_map[distribution])
+        print(f"ACCEPTANCE_SHAPE {distribution:<15} N={shapes}")
 
 
 def _annotate_ppu_speedup(flagrand_record: dict[str, Any], ppu_record: dict[str, Any]) -> None:

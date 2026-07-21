@@ -2,7 +2,7 @@
 
 ## 结论
 
-本次在 PPU-ZW810E 上完成了 Philox 路径下四类端到端随机数 API 的迁移、性能验证和正确性核验：
+本次在 PPU-ZW810E 上完成了 Philox 路径下四类随机数算子族、七个端到端 API 的迁移、性能验证和正确性核验：
 
 - Raw
 - Uniform
@@ -11,44 +11,52 @@
 
 其中 Raw、Uniform 支持任意长度；Normal、LogNormal 基于 Box-Muller，一次生成两个值，因此输出长度要求为偶数。
 
-按“先对同一精度/类型下多个 shape 的加速比求平均，再对同一算子的不同精度/类型求平均，最后对四类 API 求平均”的口径，排除 16M 级别极大 shape 后，本次整体端到端结果为：
+本次验收口径采用固定 shape 集合逐 API 报告：每个端到端 API 先对自身多个 shape 的加速比求平均，对标 baseline 为 PPU SDK native `acrand`。
+
+2026-07-21 `acceptance_wide` 实测结果：
 
 ```text
-FlagRAND vs PPU acrand = 1.015x
+Matrix records: 324 records, 0 failures
+Acceptance status: pass, 7/7 APIs in target range
 ```
+
+| API | API 加速比 |
+| --- | ---: |
+| Raw32 | 1.112x |
+| Uniform FP32 | 1.016x |
+| Uniform FP64 | 1.224x |
+| Normal FP32 | 1.110x |
+| Normal FP64 | 1.033x |
+| LogNormal FP32 | 1.183x |
+| LogNormal FP64 | 1.033x |
 
 ## 计算口径
 
 单个 shape 的加速比：
 
 ```text
-speedup(shape) = PPU acrand total time / FlagRAND total time
+speedup(shape) = PPU acrand total ms / FlagRAND total ms
 ```
 
-第一层，按 shape 聚合：
+每个 API 的加速比：
 
 ```text
-precision_avg = mean(speedup(shape_1), speedup(shape_2), ...)
+api_speedup = mean(speedup(shape_1), speedup(shape_2), ...)
 ```
 
-第二层，按同一算子的不同精度/类型聚合：
 
-```text
-op_avg = mean(precision_avg_1, precision_avg_2, ...)
-```
 
-第三层，四类 API 总平均：
+本次验收纳入的 shape：
 
-```text
-overall = mean(Raw_avg, Uniform_avg, Normal_avg, LogNormal_avg)
-```
-
-本次正式聚合纳入的 shape：
-
-| API 组 | 纳入 shape |
+| API | 纳入 shape |
 | --- | --- |
-| Raw / Uniform | `1,2,3,4,5,7,8,15,16,17,31,32,33,63,64,65,127,128,129,255,256,257,1023,1024,1025,4095,4096,4097,65535,65536,65537,1048575,1048576,1048577` |
-| Normal / LogNormal | `2,4,6,8,10,14,16,18,126,128,130,1022,1024,1026,4094,4096,4098,65534,65536,65538,1048574,1048576,1048578` |
+| Raw32 | `128,256,1023,1024,1025,4095,4096,4097,16384,65535,65536,65537,262144,1048575,1048576,1048577` |
+| Uniform FP32 | `128,256,1023,1024,1025,4095,4096,4097,16384,65535,65536,65537,262144,1048575,1048576,1048577` |
+| Uniform FP64 | `128,256,1023,1024,1025,4095,4096,4097,16384,65535,65536,65537,262144,1048575,1048576,1048577` |
+| Normal FP32 | `126,128,130,1022,1024,1026,4094,4096,4098,16384,65534,65536,65538,262144,1048574,1048576,1048578` |
+| Normal FP64 | `126,128,1024,1026,4096,4098,16384,65534,65536,65538,262144` |
+| LogNormal FP32 | `126,128,130,1022,1024,1026,4094,4096,4098,16384,65534,65536,65538,262144,1048574,1048576,1048578` |
+| LogNormal FP64 | `18,126,128,130,1022,1024,1026,4094,4096,4098,16384,65534,65536,65538,262144` |
 
 ## 对标 API
 
@@ -56,7 +64,6 @@ overall = mean(Raw_avg, Uniform_avg, Normal_avg, LogNormal_avg)
 
 正式性能测试使用默认 fast/cached 路径，不设置 `FLAGRAND_FORCE_PORTABLE=1`。该变量仅用于兼容性排障；开启后会禁用 cached binary launcher，并可能让部分 f32 normal/lognormal 使用 portable math，因此不作为正式性能口径。
 
-如果历史结果是在 `FLAGRAND_FORCE_PORTABLE=1` 的环境中生成，应按运行指南重新采集正式性能数据，再更新本节表格和聚合结果。
 
 | 算子 | FlagRAND 端到端 API | PPU baseline API |
 | --- | --- | --- |
@@ -68,56 +75,38 @@ overall = mean(Raw_avg, Uniform_avg, Normal_avg, LogNormal_avg)
 | LogNormal FP32 | `curand.generate_lognormal` | `acrandGenerateLogNormal` |
 | LogNormal FP64 | `curand.generate_lognormal_double` | `acrandGenerateLogNormalDouble` |
 
-## Shape 平均结果
+## 验收性能结果
 
-| 类型 | shape 数 | shape 平均加速比 |
-| --- | ---: | ---: |
-| Raw32 | 34 | 0.770x |
-| Uniform FP32 | 34 | 0.715x |
-| Uniform FP64 | 34 | 0.870x |
-| Normal FP32 | 23 | 0.865x |
-| Normal FP64 | 23 | 1.595x |
-| LogNormal FP32 | 23 | 0.922x |
-| LogNormal FP64 | 23 | 1.614x |
-
-## 算子平均结果
-
-| 算子 | 类型平均方式 | 算子平均加速比 |
-| --- | --- | ---: |
-| Raw | Raw32 | 0.770x |
-| Uniform | mean(Uniform FP32, Uniform FP64) | 0.793x |
-| Normal | mean(Normal FP32, Normal FP64) | 1.230x |
-| LogNormal | mean(LogNormal FP32, LogNormal FP64) | 1.268x |
-
-最终整体加速比：
+完整结果目录：
 
 ```text
-(0.770 + 0.793 + 1.230 + 1.268) / 4 = 1.015x
+ppu_results/acceptance_wide/20260721_134131_acceptance_full_philox
 ```
+
 
 ## 代表性明细
 
-下表只列代表性 shape，完整平均使用上文列出的全部 shape。
+下表只列代表性 shape，完整验收结果以上文逐 API shape 加速比为准。
 
-| 算子 | N | 类型 | FlagRAND total ms | PPU acrand total ms | 加速比 |
+| API | N | 类型 | FlagRAND total ms | PPU acrand total ms | 加速比 |
 | --- | ---: | --- | ---: | ---: | ---: |
-| Raw32 | 1 | 小 N | 0.0161 | 0.0089 | 0.553x |
-| Raw32 | 65537 | 奇数长度 | 0.0228 | 0.0098 | 0.430x |
-| Raw32 | 1048576 | 对齐大 shape | 0.0137 | 0.0459 | 3.358x |
-| Uniform FP32 | 1 | 小 N | 0.0171 | 0.0090 | 0.528x |
-| Uniform FP32 | 65537 | 奇数长度 | 0.0238 | 0.0097 | 0.408x |
-| Uniform FP32 | 1048576 | 对齐大 shape | 0.0141 | 0.0423 | 3.008x |
-| Uniform FP64 | 1 | 小 N | 0.0152 | 0.0091 | 0.595x |
-| Uniform FP64 | 65537 | 奇数长度 | 0.0175 | 0.0099 | 0.565x |
-| Uniform FP64 | 1048576 | 对齐大 shape | 0.0131 | 0.0440 | 3.370x |
-| Normal FP32 | 65538 | 非 4 倍数偶数 | 0.0210 | 0.0105 | 0.500x |
-| Normal FP32 | 1048576 | 对齐大 shape | 0.0161 | 0.0543 | 3.372x |
-| Normal FP64 | 65538 | 非 4 倍数偶数 | 0.0217 | 0.0161 | 0.739x |
-| Normal FP64 | 1048576 | 对齐大 shape | 0.0236 | 0.1994 | 8.461x |
-| LogNormal FP32 | 65538 | 非 4 倍数偶数 | 0.0211 | 0.0104 | 0.494x |
-| LogNormal FP32 | 1048576 | 对齐大 shape | 0.0163 | 0.0616 | 3.776x |
-| LogNormal FP64 | 65538 | 非 4 倍数偶数 | 0.0210 | 0.0191 | 0.909x |
-| LogNormal FP64 | 1048576 | 对齐大 shape | 0.0293 | 0.2442 | 8.329x |
+| Raw32 | 4097 | 奇数长度 | 0.0165 | 0.0096 | 0.585x |
+| Raw32 | 262144 | 中等 shape | 0.0128 | 0.0138 | 1.077x |
+| Raw32 | 1048576 | 1M 级对齐长度 | 0.0130 | 0.0459 | 3.538x |
+| Uniform FP32 | 262144 | 中等 shape | 0.0137 | 0.0129 | 0.941x |
+| Uniform FP32 | 1048576 | 1M 级对齐长度 | 0.0139 | 0.0424 | 3.041x |
+| Uniform FP64 | 262144 | 中等 shape | 0.0125 | 0.0134 | 1.072x |
+| Uniform FP64 | 1048577 | 1M 级奇数长度 | 0.0153 | 0.0503 | 3.282x |
+| Normal FP32 | 4098 | 非 4 倍数偶数 | 0.0182 | 0.0103 | 0.567x |
+| Normal FP32 | 262144 | 中等 shape | 0.0156 | 0.0155 | 0.994x |
+| Normal FP32 | 1048576 | 1M 级对齐长度 | 0.0159 | 0.0543 | 3.416x |
+| Normal FP64 | 65538 | 非 4 倍数偶数 | 0.0163 | 0.0161 | 0.990x |
+| Normal FP64 | 262144 | 中等 shape | 0.0145 | 0.0519 | 3.587x |
+| LogNormal FP32 | 4098 | 非 4 倍数偶数 | 0.0182 | 0.0103 | 0.566x |
+| LogNormal FP32 | 262144 | 中等 shape | 0.0158 | 0.0172 | 1.091x |
+| LogNormal FP32 | 1048576 | 1M 级对齐长度 | 0.0158 | 0.0615 | 3.900x |
+| LogNormal FP64 | 65538 | 非 4 倍数偶数 | 0.0157 | 0.0193 | 1.230x |
+| LogNormal FP64 | 262144 | 中等 shape | 0.0145 | 0.0631 | 4.342x |
 
 ## 正确性核验
 

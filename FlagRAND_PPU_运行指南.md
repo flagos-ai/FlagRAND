@@ -92,7 +92,19 @@ python -m pytest -q tests/test_api.py tests/test_philox_cuda.py \
 
 ## 4. 性能测试 Shape
 
-正式聚合纳入小 N、奇数、非 4 倍数和 1M 附近 shape，但不纳入 16M 级别大 N。
+验收口径的一键性能测试：
+
+```bash
+python ppu_flagrand_matrix.py \
+  --profile full \
+  --acceptance-profile \
+  --skip-torch-reference \
+  --results-dir ppu_results/acceptance \
+  2>&1 | tee ppu_logs/acceptance.log
+```
+终端和 `summary.md` 会输出每个 API 各自的加速比，默认对标 PPU native `acrand`。
+
+正式聚合纳入小 N、奇数、非 4 倍数和 1M 附近 shape。
 
 Raw/Uniform shape：
 

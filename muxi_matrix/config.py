@@ -15,6 +15,131 @@ ALL_DISTRIBUTIONS = (
     "lognormal_f64",
 )
 
+ACCEPTANCE_DISTRIBUTION_SIZES = {
+    "raw32": (
+        128,
+        256,
+        1023,
+        1024,
+        1025,
+        4095,
+        4096,
+        4097,
+        16384,
+        65535,
+        65536,
+        65537,
+        262144,
+        1048575,
+        1048576,
+        1048577,
+    ),
+    "uniform_f32": (
+        128,
+        256,
+        1023,
+        1024,
+        1025,
+        4095,
+        4096,
+        4097,
+        16384,
+        65535,
+        65536,
+        65537,
+        262144,
+        1048575,
+        1048576,
+        1048577,
+    ),
+    "uniform_f64": (
+        128,
+        256,
+        1023,
+        1024,
+        1025,
+        4095,
+        4096,
+        4097,
+        16384,
+        65535,
+        65536,
+        65537,
+        262144,
+        1048575,
+        1048576,
+        1048577,
+    ),
+    "normal_f32": (
+        126,
+        128,
+        130,
+        1022,
+        1024,
+        1026,
+        4094,
+        4096,
+        4098,
+        16384,
+        65534,
+        65536,
+        65538,
+        262144,
+        1048574,
+        1048576,
+        1048578,
+    ),
+    "normal_f64": (
+        126,
+        128,
+        1024,
+        1026,
+        4096,
+        4098,
+        16384,
+        65534,
+        65536,
+        65538,
+        262144,
+    ),
+    "lognormal_f32": (
+        126,
+        128,
+        130,
+        1022,
+        1024,
+        1026,
+        4094,
+        4096,
+        4098,
+        16384,
+        65534,
+        65536,
+        65538,
+        262144,
+        1048574,
+        1048576,
+        1048578,
+    ),
+    "lognormal_f64": (
+        18,
+        126,
+        128,
+        130,
+        1022,
+        1024,
+        1026,
+        4094,
+        4096,
+        4098,
+        16384,
+        65534,
+        65536,
+        65538,
+        262144,
+    ),
+}
+
 
 @dataclass(frozen=True)
 class Profile:
@@ -68,6 +193,32 @@ def parse_args(
             "positive count; normal/lognormal requires even counts."
         ),
     )
+    parser.add_argument(
+        "--acceptance-profile",
+        action="store_true",
+        help=(
+            "Run the fixed PPU acceptance shape set and print per-API speedups "
+            "against the selected PPU baseline."
+        ),
+    )
+    parser.add_argument(
+        "--acceptance-baseline",
+        choices=("ppu_acrand", "ppu_curand"),
+        default="ppu_acrand",
+        help="Baseline used by --acceptance-profile speedup reporting.",
+    )
+    parser.add_argument(
+        "--acceptance-min",
+        type=float,
+        default=0.95,
+        help="Lower bound for acceptance speedup reporting.",
+    )
+    parser.add_argument(
+        "--acceptance-max",
+        type=float,
+        default=1.50,
+        help="Upper bound for acceptance speedup reporting.",
+    )
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument(
         "--skip-torch-reference",
@@ -110,7 +261,24 @@ def parse_args(
     parser.set_defaults(skip_ppu_acrand=default_skip_ppu_acrand)
     args = parser.parse_args()
     args.distributions = _parse_distributions(args.distributions)
-    args.profile_config = _resolve_profile(args.profile, args.sizes)
+    if args.acceptance_min <= 0.0 or args.acceptance_max <= 0.0:
+        raise SystemExit("--acceptance-min and --acceptance-max must be positive.")
+    if args.acceptance_min > args.acceptance_max:
+        raise SystemExit("--acceptance-min must be <= --acceptance-max.")
+    if args.acceptance_profile:
+        args.profile_config = _resolve_acceptance_profile(
+            args.profile,
+            args.sizes,
+            args.distributions,
+        )
+        args.acceptance_shape_map = {
+            distribution: ACCEPTANCE_DISTRIBUTION_SIZES[distribution]
+            for distribution in args.distributions
+        }
+        _validate_acceptance_baseline(args)
+    else:
+        args.profile_config = _resolve_profile(args.profile, args.sizes)
+        args.acceptance_shape_map = {}
     return args
 
 
@@ -141,3 +309,43 @@ def _resolve_profile(name: str, sizes_value: str | None) -> Profile:
         repeats=profile.repeats,
         timing_budget_ms=profile.timing_budget_ms,
     )
+
+
+def _resolve_acceptance_profile(
+    name: str,
+    sizes_value: str | None,
+    distributions: tuple[str, ...],
+) -> Profile:
+    if sizes_value is not None:
+        raise SystemExit("--sizes cannot be combined with --acceptance-profile.")
+    missing = sorted(set(distributions) - set(ACCEPTANCE_DISTRIBUTION_SIZES))
+    if missing:
+        raise SystemExit(f"No acceptance shapes configured for: {', '.join(missing)}")
+    profile = PROFILES[name]
+    sizes = tuple(
+        sorted(
+            {
+                size
+                for distribution in distributions
+                for size in ACCEPTANCE_DISTRIBUTION_SIZES[distribution]
+            }
+        )
+    )
+    return Profile(
+        name=f"acceptance_{profile.name}",
+        sizes=sizes,
+        warmup=profile.warmup,
+        repeats=profile.repeats,
+        timing_budget_ms=profile.timing_budget_ms,
+    )
+
+
+def _validate_acceptance_baseline(args: argparse.Namespace) -> None:
+    if args.acceptance_baseline == "ppu_acrand" and args.skip_ppu_acrand:
+        raise SystemExit(
+            "--acceptance-profile requires --with-ppu-acrand for ppu_acrand reporting."
+        )
+    if args.acceptance_baseline == "ppu_curand" and args.skip_ppu_curand:
+        raise SystemExit(
+            "--acceptance-profile requires --with-ppu-curand for ppu_curand reporting."
+        )

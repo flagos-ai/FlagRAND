@@ -33,6 +33,98 @@ def write_results(
     )
 
 
+def build_acceptance_summary(
+    records: list[dict[str, Any]],
+    *,
+    distributions: tuple[str, ...],
+    shape_map: dict[str, tuple[int, ...]],
+    baseline: str,
+    min_speedup: float,
+    max_speedup: float,
+) -> dict[str, Any]:
+    speedup_key = f"speedup_vs_{baseline}"
+    rows = []
+    for distribution in distributions:
+        distribution_records = [
+            record
+            for record in records
+            if record.get("backend") == "flagrand_public"
+            and record.get("distribution") == distribution
+            and record.get("status") == "pass"
+        ]
+        points = []
+        for record in distribution_records:
+            speedup = record.get(speedup_key)
+            if speedup is None:
+                continue
+            points.append(
+                {
+                    "n": int(record["n"]),
+                    "speedup": float(speedup),
+                    "total_ms": float(record["total_ms_median"]),
+                    "baseline_total_ms": (
+                        float(record["total_ms_median"]) * float(speedup)
+                    ),
+                }
+            )
+        if points:
+            api_speedup = sum(point["speedup"] for point in points) / len(points)
+            status = "pass" if min_speedup <= api_speedup <= max_speedup else "warn"
+        else:
+            api_speedup = None
+            status = "missing"
+        rows.append(
+            {
+                "distribution": distribution,
+                "configured_shapes": list(shape_map.get(distribution, ())),
+                "shape_count": len(points),
+                "points": points,
+                "api_speedup": api_speedup,
+                "status": status,
+            }
+        )
+    pass_count = sum(row["status"] == "pass" for row in rows)
+    return {
+        "baseline": baseline,
+        "speedup_key": speedup_key,
+        "min_speedup": float(min_speedup),
+        "max_speedup": float(max_speedup),
+        "api_count": len(rows),
+        "pass_count": pass_count,
+        "status": "pass" if pass_count == len(rows) else "warn",
+        "cross_api_average": None,
+        "rows": rows,
+    }
+
+
+def print_acceptance_summary(summary: dict[str, Any]) -> None:
+    print(
+        "Acceptance speedup summary "
+        f"baseline={summary['baseline']} "
+        f"target=[{summary['min_speedup']:.2f}, {summary['max_speedup']:.2f}] "
+        "cross_api_average=disabled"
+    )
+    for row in summary["rows"]:
+        points = row["points"]
+        if points:
+            shapes = ",".join(str(point["n"]) for point in points)
+            shape_speedups = ",".join(f"{point['speedup']:.3f}x" for point in points)
+            api_speedup = f"{row['api_speedup']:.3f}x"
+        else:
+            shapes = ",".join(str(size) for size in row["configured_shapes"]) or "n/a"
+            shape_speedups = "n/a"
+            api_speedup = "n/a"
+        print(
+            f"ACCEPTANCE {row['status']:<7} {row['distribution']:<15} "
+            f"shapes={shapes:<20} shape_speedups={shape_speedups:<16} "
+            f"api_speedup={api_speedup}"
+        )
+    print(
+        f"Acceptance status: {summary['status']} "
+        f"({summary['pass_count']}/{summary['api_count']} APIs in target range)"
+    )
+
+
 def print_record(record: dict[str, Any]) -> None:
     identity = (
         f"{record['backend']:<17} {record['distribution']:<15} "
@@ -126,6 +218,9 @@ def _render_summary(manifest: dict[str, Any], records: list[dict[str, Any]]) -> 
                 speedup=float(speedup),
             )
         )
+    acceptance_summary = manifest.get("acceptance_summary")
+    if acceptance_summary:
+        lines.extend(_render_acceptance_summary(acceptance_summary))
     failures = [record for record in records if record["status"] != "pass"]
     if failures:
         lines.extend(("", "## Failures", ""))
@@ -137,3 +232,35 @@ def _render_summary(manifest: dict[str, Any], records: list[dict[str, Any]]) -> 
             )
     lines.append("")
     return "\n".join(lines)
+
+
+def _render_acceptance_summary(summary: dict[str, Any]) -> list[str]:
+    lines = [
+        "",
+        "## Acceptance Speedup Summary",
+        "",
+        f"- Baseline: `{summary['baseline']}`",
+        f"- Target range: `{summary['min_speedup']:.2f}x` to `{summary['max_speedup']:.2f}x`",
+        "- Cross-API average: `not reported`",
+        (
+            f"- Status: `{summary['status']}` "
+            f"(`{summary['pass_count']}`/`{summary['api_count']}` APIs in range)"
+        ),
+        "",
+        "| API | Shapes | Shape speedups | API speedup | Status |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for row in summary["rows"]:
+        if row["points"]:
+            shapes = ", ".join(str(point["n"]) for point in row["points"])
+            shape_speedups = ", ".join(f"{point['speedup']:.3f}x" for point in row["points"])
+            api_speedup = f"{row['api_speedup']:.3f}x"
+        else:
+            shapes = ", ".join(str(size) for size in row["configured_shapes"]) or "n/a"
+            shape_speedups = "n/a"
+            api_speedup = "n/a"
+        lines.append(
+            f"| {row['distribution']} | {shapes} | {shape_speedups} | "
+            f"{api_speedup} | {row['status']} |"
+        )
+    return lines
