@@ -1,0 +1,71 @@
+ops:
+  - id: raw32
+    description: Counter-based Philox4x32-10 raw 32-bit output.
+    for: flagrand.ops.philox.raw32
+    labels: [random, philox]
+    kind: distribution
+    dtypes: [int32]
+    accuracy_test: tests/accuracy/test_philox_cuda.py
+    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_ascend_910c.py]
+    performance_test: benchmark/test_random_perf.py
+    stages: [accuracy, performance]
+  - id: uniform_f32
+    description: Uniform random values in float32.
+    for: flagrand.ops.philox.uniform_f32
+    labels: [random, philox]
+    kind: distribution
+    dtypes: [float32]
+    accuracy_test: tests/accuracy/test_philox_cuda.py
+    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_ascend_910c.py]
+    performance_test: benchmark/test_random_perf.py
+    stages: [accuracy, performance]
+  - id: uniform_f64
+    description: Uniform random values using the platform binary64 contract.
+    for: flagrand.ops.philox.uniform_f64
+    labels: [random, philox]
+    kind: distribution
+    dtypes: [float64]
+    accuracy_test: tests/accuracy/test_philox_cuda.py
+    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_ascend_910c.py]
+    performance_test: benchmark/test_random_perf.py
+    stages: [accuracy, performance]
+  - id: normal_f32
+    description: Normally distributed random values in float32.
+    for: flagrand.ops.philox.normal_f32
+    labels: [random, philox]
+    kind: distribution
+    dtypes: [float32]
+    accuracy_test: tests/accuracy/test_philox_cuda.py
+    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_ascend_910c.py]
+    performance_test: benchmark/test_random_perf.py
+    stages: [accuracy, performance]
+  - id: normal_f64
+    description: Normal random values using the platform binary64 contract.
+    for: flagrand.ops.philox.normal_f64
+    labels: [random, philox]
+    kind: distribution
+    dtypes: [float64]
+    accuracy_test: tests/accuracy/test_philox_cuda.py
+    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_ascend_910c.py]
+    performance_test: benchmark/test_random_perf.py
+    stages: [accuracy, performance]
+  - id: lognormal_f32
+    description: Log-normal random values in float32.
+    for: flagrand.ops.philox.lognormal_f32
+    labels: [random, philox]
+    kind: distribution
+    dtypes: [float32]
+    accuracy_test: tests/accuracy/test_philox_cuda.py
+    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_ascend_910c.py]
+    performance_test: benchmark/test_random_perf.py
+    stages: [accuracy, performance]
+  - id: lognormal_f64
+    description: Log-normal random values using the platform binary64 contract.
+    for: flagrand.ops.philox.lognormal_f64
+    labels: [random, philox]
+    kind: distribution
+    dtypes: [float64]
+    accuracy_test: tests/accuracy/test_philox_cuda.py
+    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_ascend_910c.py]
+    performance_test: benchmark/test_random_perf.py
+    stages: [accuracy, performance]

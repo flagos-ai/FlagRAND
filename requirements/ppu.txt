@@ -1,0 +1,4 @@
+# Use the vendor DSW image as the source of torch, FlagTree/Triton and the
+# PPU SDK. The current validated image reports FlagTree 0.6.0+ppu3.6,
+# Triton 3.6.0, target backend ``ppu`` and PPU SDK 2.0.0-715aa1.
+# Do not let pip replace these hardware-coupled packages.

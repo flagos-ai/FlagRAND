@@ -4,12 +4,9 @@ import torch
 import triton
 import triton.language as tl
 
-from flagrand.runtime import CachedKernelLauncher, HAS_LIBTUNER, require_libtuner
+from flagrand.fused._internal.transforms import uint32_pair_to_uniform64_curand_compat, uniform_to_normal_fast_f64
+from flagrand.runtime import HAS_LIBTUNER, CachedKernelLauncher, require_libtuner
 from flagrand.runtime.libtuner import PHILOX_LIBTUNER_CONFIGS, libentry, libtuner
-from flagrand.fused._internal.transforms import (
-    uint32_pair_to_uniform64_curand_compat,
-    uniform_to_normal_fast_f64,
-)
 
 
 @triton.jit

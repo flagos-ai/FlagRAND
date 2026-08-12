@@ -6,10 +6,26 @@ build-backend = "setuptools.build_meta"
 name = "FlagRAND"
 version = "0.1.0"
 description = "Philox Host API implementation with Triton."
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "torch",
     "triton",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0,<10",
+]
+dev = [
+    "black>=24.0,<25",
+    "build>=1.2,<2",
+    "flake8>=7.1,<8",
+    "isort>=5.13,<7",
+    "pre-commit>=3.7,<5",
+    "PyYAML>=6.0,<7",
+    "pytest>=8.0,<10",
+    "twine>=5.0,<7",
 ]
 
 [tool.setuptools.packages.find]
@@ -17,5 +33,28 @@ where = ["src"]
 include = ["flagrand*"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/accuracy"]
 addopts = "--basetemp=.pytest_tmp"
+markers = [
+    "accuracy: deterministic, contract, or statistical correctness checks",
+    "performance: end-to-end hardware performance matrix",
+    "cuda: requires a CUDA-compatible device",
+    "ppu: requires a PPU-ZW810E runner and native RNG libraries",
+    "ascend_910c: requires a Huawei Ascend 910C runner with CANN 9.0",
+    "runtime: backend and launch-policy checks",
+    "raw32: raw 32-bit Philox output",
+    "uniform_f32: float32 uniform distribution",
+    "uniform_f64: float64 Huawei/cuRAND-compatible uniform distribution",
+    "normal_f32: float32 normal distribution",
+    "normal_f64: float64 Huawei/cuRAND-compatible normal distribution",
+    "lognormal_f32: float32 log-normal distribution",
+    "lognormal_f64: float64 Huawei/cuRAND-compatible log-normal distribution",
+]
+
+[tool.black]
+line-length = 120
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+line_length = 120

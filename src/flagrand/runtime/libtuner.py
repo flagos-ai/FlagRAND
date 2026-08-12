@@ -34,16 +34,11 @@ def require_libtuner() -> None:
     if HAS_LIBTUNER:
         return
     detail = (
-        f" Import failed with {type(LIBTUNER_IMPORT_ERROR).__name__}: "
-        f"{LIBTUNER_IMPORT_ERROR}"
+        f" Import failed with {type(LIBTUNER_IMPORT_ERROR).__name__}: " f"{LIBTUNER_IMPORT_ERROR}"
         if LIBTUNER_IMPORT_ERROR is not None
         else ""
     )
-    raise RuntimeError(
-        "FLAGRAND_USE_LIBTUNER=1 requires FlagGems LibTuner "
-        "(flag_gems.utils.libentry)."
-        + detail
-    )
+    raise RuntimeError("FLAGRAND_USE_LIBTUNER=1 requires FlagGems LibTuner " "(flag_gems.utils.libentry)." + detail)
 
 
 def libtuner_status() -> dict[str, Any]:

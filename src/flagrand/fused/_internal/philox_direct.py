@@ -4,18 +4,13 @@ import torch
 import triton
 import triton.language as tl
 
-from flagrand.runtime import (
-    CachedKernelLauncher,
-    HAS_LIBTUNER,
-    require_libtuner,
-    uses_portable_f32_math,
-)
-from flagrand.runtime.libtuner import PHILOX_LIBTUNER_CONFIGS, libentry, libtuner
 from flagrand.fused._internal.transforms import (
     uint32_to_uniform,
     uniform_to_normal_fast_f32,
     uniform_to_normal_portable_f32,
 )
+from flagrand.runtime import HAS_LIBTUNER, CachedKernelLauncher, require_libtuner, uses_portable_f32_math
+from flagrand.runtime.libtuner import PHILOX_LIBTUNER_CONFIGS, libentry, libtuner
 
 
 @triton.jit
@@ -511,11 +506,7 @@ def _launch_normal_like_f32(
             )
         else:
             grid = triton.cdiv(n_counters, block_size)
-            launcher = (
-                _PHILOX_LOGNORMAL_F32_LAUNCHER
-                if lognormal
-                else _PHILOX_NORMAL_F32_LAUNCHER
-            )
+            launcher = _PHILOX_LOGNORMAL_F32_LAUNCHER if lognormal else _PHILOX_NORMAL_F32_LAUNCHER
             launcher.launch(
                 grid,
                 (out, seed_val, base_counter, n, n_counters, mean, stddev),
@@ -525,11 +516,7 @@ def _launch_normal_like_f32(
     else:
         n_groups = triton.cdiv(n, 4)
         grid = triton.cdiv(n_groups, block_size)
-        launcher = (
-            _PHILOX_LOGNORMAL_F32_GENERIC_LAUNCHER
-            if lognormal
-            else _PHILOX_NORMAL_F32_GENERIC_LAUNCHER
-        )
+        launcher = _PHILOX_LOGNORMAL_F32_GENERIC_LAUNCHER if lognormal else _PHILOX_NORMAL_F32_GENERIC_LAUNCHER
         launcher.launch(
             grid,
             (out, seed_val, base_counter, n, n_groups, mean, stddev),
@@ -549,9 +536,7 @@ def _philox_launch_args(
     if not out.is_contiguous():
         raise ValueError(f"{op_name}: output must be contiguous.")
     if require_even and n % 2 != 0:
-        raise ValueError(
-            f"{op_name}: Philox Box-Muller path requires an even element count, got {n}."
-        )
+        raise ValueError(f"{op_name}: Philox Box-Muller path requires an even element count, got {n}.")
     offset_val = int(getattr(generator, "offset", 0))
     if offset_val < 0:
         raise ValueError(f"{op_name}: Philox offset must be >= 0, got {offset_val}.")

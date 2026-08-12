@@ -4,6 +4,8 @@ __pycache__/
 ._*
 .pytest_cache/
 .pytest_tmp/
+.coverage
+.venv/
 .cache/
 .triton_cache/
 .triton_cache*/
@@ -13,3 +15,7 @@ dist/
 muxi_results/
 ppu_logs/
 ppu_results/
+ascend_910c_logs/
+ascend_910c_results/
+*.prof
+*.tar.gz

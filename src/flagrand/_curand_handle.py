@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 from flagrand.rng import PhiloxGenerator
 
-
 CURAND_RNG_PSEUDO_PHILOX4_32_10 = "pseudo_philox4_32_10"
 
 _ALIASES = {

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
 import weakref
+from typing import Any
 
 import torch
 from triton.runtime.driver import driver
@@ -53,9 +53,7 @@ def bind_specialization(
 
 def value_tokens(values: tuple[object, ...]) -> tuple[tuple[object, ...], ...]:
     return tuple(
-        ("tensor", weakref.ref(value), value.data_ptr())
-        if isinstance(value, torch.Tensor)
-        else ("value", value)
+        ("tensor", weakref.ref(value), value.data_ptr()) if isinstance(value, torch.Tensor) else ("value", value)
         for value in values
     )
 

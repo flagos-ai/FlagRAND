@@ -6,12 +6,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flagrand.runtime import (
-    CachedKernelLauncher,
-    HAS_LIBTUNER,
-    require_libtuner,
-    use_libtuner,
-)
+from flagrand.runtime import HAS_LIBTUNER, CachedKernelLauncher, require_libtuner, use_libtuner
 from flagrand.runtime.libtuner import PHILOX_LIBTUNER_CONFIGS, libentry, libtuner
 
 
@@ -49,9 +44,9 @@ def _philox_kernel(out_ptr, seed, base_counter, n, BLOCK: tl.constexpr):
     r0, r1, r2, r3 = _philox_generate(seed, counter)
     # Build a (BLOCK, 4) tile and store with one 2D op so the compiler can
     # emit 16-byte vector stores (4 contiguous uint32 per counter).
-    r01 = tl.join(r0, r1)            # (BLOCK, 2)
-    r23 = tl.join(r2, r3)            # (BLOCK, 2)
-    tile = tl.join(r01, r23)         # (BLOCK, 2, 2)
+    r01 = tl.join(r0, r1)  # (BLOCK, 2)
+    r23 = tl.join(r2, r3)  # (BLOCK, 2)
+    tile = tl.join(r01, r23)  # (BLOCK, 2, 2)
     tile = tl.reshape(tile, (BLOCK, 4))
     base = (offs * 4)[:, None] + tl.arange(0, 4)[None, :]
     tl.store(out_ptr + base, tile.to(tl.int32, bitcast=True), mask=mask[:, None])

@@ -9,7 +9,12 @@ from triton.runtime.driver import driver
 @lru_cache(maxsize=1)
 def current_backend() -> str:
     target = driver.active.get_current_target()
-    return str(getattr(target, "backend", "unknown"))
+    backend = str(getattr(target, "backend", "unknown"))
+    if backend == "ppu":
+        from flagrand.runtime.ppu_compiler import install_ppu_compiler_compatibility
+
+        install_ppu_compiler_compatibility()
+    return backend
 
 
 def force_portable_backend() -> bool:
@@ -20,8 +25,12 @@ def force_portable_backend() -> bool:
 def supports_cached_binary_launch(backend: str | None = None) -> bool:
     if force_portable_backend():
         return False
-    return (current_backend() if backend is None else backend) == "cuda"
+    selected = current_backend() if backend is None else backend
+    return selected in {"cuda", "ppu", "npu"}
 
 
 def uses_portable_f32_math(backend: str | None = None) -> bool:
-    return not supports_cached_binary_launch(backend)
+    if force_portable_backend():
+        return True
+    selected = current_backend() if backend is None else backend
+    return selected != "cuda"

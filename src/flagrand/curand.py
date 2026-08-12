@@ -9,11 +9,7 @@ from flagrand._curand_handle import (
     set_generator_offset,
     set_pseudo_random_generator_seed,
 )
-from flagrand._curand_philox_fast_path import (
-    try_generate_normal,
-    try_generate_raw,
-    try_generate_uniform,
-)
+from flagrand._curand_philox_fast_path import try_generate_normal, try_generate_raw, try_generate_uniform
 
 
 def generate(
@@ -57,18 +53,17 @@ def generate_normal(
     stddev: float,
     **kwargs: object,
 ) -> torch.Tensor:
-    _require_dtype(out, torch.float32, "generate_normal")
-    _require_handled(
-        try_generate_normal(
-            generator,
-            out,
-            mean=mean,
-            stddev=stddev,
-            kwargs=kwargs,
-            lognormal=False,
-        ),
-        "generate_normal",
-    )
+    if out.dtype != torch.float32:
+        raise TypeError(f"generate_normal: expected output dtype {torch.float32}, got {out.dtype}.")
+    if not try_generate_normal(
+        generator,
+        out,
+        mean=mean,
+        stddev=stddev,
+        kwargs=kwargs,
+        lognormal=False,
+    ):
+        _require_handled(False, "generate_normal")
     return out
 
 
@@ -103,18 +98,17 @@ def generate_lognormal(
     stddev: float,
     **kwargs: object,
 ) -> torch.Tensor:
-    _require_dtype(out, torch.float32, "generate_lognormal")
-    _require_handled(
-        try_generate_normal(
-            generator,
-            out,
-            mean=mean,
-            stddev=stddev,
-            kwargs=kwargs,
-            lognormal=True,
-        ),
-        "generate_lognormal",
-    )
+    if out.dtype != torch.float32:
+        raise TypeError(f"generate_lognormal: expected output dtype {torch.float32}, got {out.dtype}.")
+    if not try_generate_normal(
+        generator,
+        out,
+        mean=mean,
+        stddev=stddev,
+        kwargs=kwargs,
+        lognormal=True,
+    ):
+        _require_handled(False, "generate_lognormal")
     return out
 
 
@@ -150,7 +144,7 @@ def _require_handled(handled: bool, op_name: str) -> None:
     if not handled:
         raise ValueError(
             f"{op_name}: this preview requires a Philox CurandGenerator, a "
-            "contiguous CUDA output, and only block_size/num_warps options."
+            "contiguous CUDA/NPU output, and only block_size/num_warps options."
         )
 
 

@@ -8,11 +8,7 @@ from triton import knobs
 from triton.runtime.driver import driver
 
 from flagrand.runtime.backend import supports_cached_binary_launch
-from flagrand.runtime.specialization import (
-    bind_specialization,
-    find_matching_entry,
-    value_tokens,
-)
+from flagrand.runtime.specialization import bind_specialization, find_matching_entry, value_tokens
 
 
 @dataclass

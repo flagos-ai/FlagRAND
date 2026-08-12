@@ -3,7 +3,6 @@ from __future__ import annotations
 import triton
 import triton.language as tl
 
-
 BOX_MULLER_MIN_U_F32 = 2.3283064365386963e-10
 BOX_MULLER_MIN_U_F64 = 1.1102230246251565e-16
 _BOX_MULLER_MIN_U_F32_TL = tl.constexpr(BOX_MULLER_MIN_U_F32)
@@ -90,9 +89,8 @@ def _cos_approx_f32(x):
 @triton.jit
 def _sincos_poly_f64(unit_angle):
     quadrant = tl.floor(4.0 * unit_angle + 0.5).to(tl.int32)
-    reduced = (
-        6.283185307179586476925286766559 * unit_angle
-        - 1.5707963267948966192313216916398 * quadrant.to(tl.float64)
+    reduced = 6.283185307179586476925286766559 * unit_angle - 1.5707963267948966192313216916398 * quadrant.to(
+        tl.float64
     )
     squared = reduced * reduced
 
