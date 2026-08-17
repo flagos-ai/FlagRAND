@@ -15,12 +15,6 @@ fi
 
 source "$CANN_ENV"
 
-if [[ "${ASCEND_HOME_PATH:-}" != *"cann-9.0"* ]]; then
-    echo "Expected CANN 9.0, but ASCEND_HOME_PATH=${ASCEND_HOME_PATH:-unset}" >&2
-    echo "Use the validated CANN 9.0 container with /usr/local/Ascend/cann-9.0.0." >&2
-    exit 11
-fi
-
 export PYTHONPATH="$PROJECT_DIR/src:$PROJECT_DIR${PYTHONPATH:+:$PYTHONPATH}"
 export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-$PROJECT_DIR/.triton_cache_ascend910c_isolated_v5}"
 export FLAGRAND_USE_LIBTUNER=0

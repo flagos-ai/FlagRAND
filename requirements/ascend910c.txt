@@ -1,4 +1,8 @@
-# Use the vendor image as the source of CANN, torch, torch_npu and Triton.
-# The validated 910C image reports CANN 9.0.0, torch_npu 2.9.0.post2 and
-# FlagTree's Triton 3.5.1 distribution with target backend ``npu``.
-# Do not let pip replace those hardware-coupled packages.
+# The complete public-source environment is built by docker/ascend910c/Dockerfile.
+# Hardware-coupled versions:
+#   CANN 9.0.0 Toolkit + A3 ops
+#   Python 3.11.15
+#   torch 2.9.0+cpu
+#   torch_npu 2.9.0.post2
+#   FlagTree release 0.6.0+triton3.5, backend=ascend
+# This file is documentation; do not pass it to pip directly.

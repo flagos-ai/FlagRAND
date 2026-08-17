@@ -2,9 +2,9 @@
 
 ## 验证环境
 
-当前交付以节点容器 `FlagBLAS_ywb` 中的 CANN 9.0.0 环境为准。实测组合为 Python 3.11.15、torch 2.9.0+cpu、torch_npu 2.9.0.post2，以及由 FlagTree 分发的 Triton 3.5.1；Triton target 为 `GPUTarget(backend='npu', arch='Ascend910_9382', warp_size=0)`。包元数据可能不显示 `triton-ascend`，不能因此误判 backend。
+当前交付固定使用 CANN 9.0.0、Python 3.11.15、torch 2.9.0+cpu、torch_npu 2.9.0.post2，以及 FlagTree `0.6.0+triton3.5` release 的 Ascend backend；Triton target 为 `GPUTarget(backend='npu', arch='Ascend910_9382', warp_size=0)`。包元数据可能不显示 `triton-ascend`，不能因此误判 backend。
 
-不得在容器内用 pip 替换 torch、torch_npu、Triton 或 CANN。离线节点不执行 editable build，直接设置源码路径：
+公开环境的完整构建、运行和结果回收步骤见[从零构建与一键验收](ascend_910c_environment.md)。容器内直接使用交付源码路径：
 
 ```bash
 export PYTHONPATH="$PWD/src:$PWD${PYTHONPATH:+:$PYTHONPATH}"
@@ -42,15 +42,11 @@ counter epoch 时自动回退到完整 windowed 路径，replay、offset 与 bul
 
 ## 一键正式回归
 
-交付包解压进 `FlagBLAS_ywb` 容器后，在容器内执行：
+从公开源构建镜像并执行正式回归：
 
 ```bash
-set -euo pipefail
-cd /path/to/FlagRAND-pr1
-FLAGRAND_PERF_PROFILE=acceptance \
-FLAGRAND_DEVICE=0 \
-FLAGRAND_SPEEDUP_MIN=0.95 \
-    bash scripts/delivery/run_ascend_910c_v6.sh
+bash docker/ascend910c/build.sh
+bash docker/ascend910c/run.sh
 ```
 
 脚本依次完成环境核验、Python 静态编译、正确性预检、pytest、七个 API 的独立进程正式验收和结果打包。预检确认 CANN 9.0、910C/9382 证据、Triton `npu`/`ascend` backend、ACLNN RNG 符号、replay、流连续性、F64 精度契约以及 baseline replay。诊断开关 `--allow-non-cann9` 和 `--allow-unverified-910c` 会把结果标为非正式交付数据。
