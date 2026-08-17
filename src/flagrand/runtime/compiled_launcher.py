@@ -42,6 +42,7 @@ class CachedKernelLauncher:
         self._max_entries = max_entries
         self._entries: list[_LaunchEntry] = []
         self._keyed_entries: OrderedDict[object, _LaunchEntry] = OrderedDict()
+        self._legacy_entries: OrderedDict[object, Any] = OrderedDict()
 
     def launch(
         self,
@@ -53,6 +54,13 @@ class CachedKernelLauncher:
         specialization_key: object | None = None,
     ) -> Any:
         grid3 = _normalize_grid(grid)
+        if knobs is None and getattr(self._kernel, "binder", None) is not None:
+            return self._launch_legacy(
+                grid3,
+                args,
+                constexpr_values,
+                option_values,
+            )
         values = args + constexpr_values
         if not _requires_regular_jit(self._kernel):
             if specialization_key is not None:
@@ -77,6 +85,54 @@ class CachedKernelLauncher:
             option_values,
             specialization_key,
         )
+
+    def _launch_legacy(
+        self,
+        grid: tuple[int, int, int],
+        args: tuple[object, ...],
+        constexpr_values: tuple[object, ...],
+        option_values: tuple[object, ...],
+    ) -> Any:
+        kwargs = dict(zip(self._constexpr_names, constexpr_values))
+        kwargs.update(zip(self._option_names, option_values))
+        kwargs["debug"] = self._kernel.debug
+        _, sig_and_spec, bound_constexprs, non_constexpr_values, excess_kwargs = self._kernel.binder(
+            *args,
+            **kwargs,
+        )
+        device = driver.active.get_current_device()
+        key = (
+            device,
+            tuple(sig_and_spec),
+            tuple(bound_constexprs),
+            tuple(sorted(excess_kwargs.items())),
+        )
+        compiled = self._legacy_entries.get(key)
+        if compiled is None:
+            compiled = self._kernel[grid](*args, **kwargs)
+            compiled._init_handles()
+            self._legacy_entries[key] = compiled
+            self._legacy_entries.move_to_end(key)
+            while len(self._legacy_entries) > self._max_entries:
+                self._legacy_entries.popitem(last=False)
+            return compiled
+
+        self._legacy_entries.move_to_end(key)
+        stream = driver.active.get_current_stream(device)
+        launch_metadata = compiled.launch_metadata(grid, stream, *non_constexpr_values)
+        compiled.run(
+            grid[0],
+            grid[1],
+            grid[2],
+            stream,
+            compiled.function,
+            compiled.packed_metadata,
+            launch_metadata,
+            compiled.launch_enter_hook,
+            compiled.launch_exit_hook,
+            *non_constexpr_values,
+        )
+        return compiled
 
     def _compile_and_launch(
         self,
@@ -156,7 +212,6 @@ def _launch_entry(
 def _requires_regular_jit(kernel: Any) -> bool:
     if knobs is None:
         return True
-
     runtime_knobs = getattr(knobs, "runtime", None)
     compilation_knobs = getattr(knobs, "compilation", None)
     launch_enter_hook = getattr(runtime_knobs, "launch_enter_hook", None)
