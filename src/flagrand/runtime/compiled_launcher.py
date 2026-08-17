@@ -4,7 +4,10 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
 
-from triton import knobs
+try:
+    from triton import knobs
+except ImportError:
+    knobs = None
 from triton.runtime.driver import driver
 
 from flagrand.runtime.backend import supports_cached_binary_launch
@@ -151,6 +154,9 @@ def _launch_entry(
 
 
 def _requires_regular_jit(kernel: Any) -> bool:
+    if knobs is None:
+        return True
+
     runtime_knobs = getattr(knobs, "runtime", None)
     compilation_knobs = getattr(knobs, "compilation", None)
     launch_enter_hook = getattr(runtime_knobs, "launch_enter_hook", None)

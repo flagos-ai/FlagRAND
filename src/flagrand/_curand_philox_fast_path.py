@@ -84,6 +84,15 @@ def try_generate_uniform(
     if out.numel() == 0:
         return True
 
+    if current_backend() == "corex" and out.dtype == torch.float32:
+        _generate_corex_uniform_f32(
+            out,
+            engine,
+            block_size=block_size,
+            num_warps=num_warps,
+        )
+        return True
+
     if out.device.type == "npu":
         generate_huawei910c, generate_huawei910c_native_f64 = _ascend_generators()
         if out.dtype == torch.float64:
@@ -164,6 +173,18 @@ def try_generate_normal(
     if out.numel() == 0:
         return True
 
+    if current_backend() == "corex" and out.dtype == torch.float32:
+        _generate_corex_normal_f32(
+            out,
+            engine,
+            mean=mean,
+            stddev=stddev,
+            lognormal=lognormal,
+            block_size=block_size,
+            num_warps=num_warps,
+        )
+        return True
+
     if out.device.type == "npu":
         generate_huawei910c, generate_huawei910c_native_f64 = _ascend_generators()
         suffix = "f64" if out.dtype == torch.float64 else "f32"
@@ -207,6 +228,75 @@ def try_generate_normal(
         ),
     )
     return True
+
+
+
+def _generate_corex_uniform_f32(
+    out: torch.Tensor,
+    engine: PhiloxGenerator,
+    *,
+    block_size: int,
+    num_warps: int,
+) -> None:
+    raw = torch.empty(out.shape, device=out.device, dtype=torch.int32)
+    generate_philox_raw_u32(
+        raw,
+        engine,
+        block_size=block_size,
+        num_warps=num_warps,
+        use_libtuner_kernel=False,
+    )
+
+    signed = raw.to(torch.float32)
+    unsigned = torch.where(raw < 0, signed + 4294967296.0, signed)
+    values = 1.0 - unsigned * 2.3283064365386963e-10
+    out.copy_(
+        torch.clamp(
+            values,
+            min=2.3283064365386963e-10,
+            max=1.0,
+        )
+    )
+
+
+def _generate_corex_normal_f32(
+    out: torch.Tensor,
+    engine: PhiloxGenerator,
+    *,
+    mean: float,
+    stddev: float,
+    lognormal: bool,
+    block_size: int,
+    num_warps: int,
+) -> None:
+    if out.numel() % 2:
+        operation = "generate_lognormal" if lognormal else "generate_normal"
+        raise ValueError(
+            f"{operation}: Philox Box-Muller path requires an even element count, got {out.numel()}."
+        )
+
+    uniform = torch.empty_like(out)
+    _generate_corex_uniform_f32(
+        uniform,
+        engine,
+        block_size=block_size,
+        num_warps=num_warps,
+    )
+
+    u1 = uniform[0::2]
+    u2 = uniform[1::2]
+    radius = torch.sqrt(-2.0 * torch.log(u1))
+    theta = 6.283185307179586 * u2
+
+    even = mean + stddev * radius * torch.cos(theta)
+    odd = mean + stddev * radius * torch.sin(theta)
+
+    if lognormal:
+        even = torch.exp(even)
+        odd = torch.exp(odd)
+
+    out[0::2].copy_(even)
+    out[1::2].copy_(odd)
 
 
 def _prepare(

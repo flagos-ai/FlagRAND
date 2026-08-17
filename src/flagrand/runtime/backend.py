@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from importlib.metadata import version
 from functools import lru_cache
 
 from triton.runtime.driver import driver
@@ -10,6 +11,8 @@ from triton.runtime.driver import driver
 def current_backend() -> str:
     target = driver.active.get_current_target()
     backend = str(getattr(target, "backend", "unknown"))
+    if backend == "cuda" and "corex" in version("triton"):
+        backend = "corex"
     if backend == "ppu":
         from flagrand.runtime.ppu_compiler import install_ppu_compiler_compatibility
 
