@@ -11,6 +11,7 @@ __pycache__
 .triton_cache*
 ascend_910c_logs
 ascend_910c_results
+ascend_910c_delivery_results
 ppu_logs
 ppu_results
 build

@@ -23,7 +23,13 @@ python -m build
 python -m twine check dist/*
 ```
 
-Hardware execution must use the vendor environment already installed on the runner; do not replace its torch, Triton or device runtime packages. See [PPU](docs/platforms/ppu.md) and [Ascend 910C](docs/platforms/ascend_910c.md) for exact commands.
+PPU execution uses the vendor environment already installed on the runner. A fresh Ascend 910C node with the NPU driver, Docker and Ascend Docker Runtime can build the pinned CANN 9.0 environment and run the full acceptance workflow with:
+
+```bash
+bash run_ascend_910c_acceptance.sh
+```
+
+See [PPU](docs/platforms/ppu.md) and [Ascend 910C from-scratch delivery](docs/platforms/ascend_910c_environment.md) for the exact environment contract.
 
 The delivery one-click entry points are `scripts/delivery/run_ppu_v6.sh` and
 `scripts/delivery/run_ascend_910c_v6.sh`. The Ascend acceptance entry point runs

@@ -13,7 +13,7 @@
 | CANN | 9.0.0 Toolkit 与 A3 ops，华为公开下载源 |
 | PyTorch | 2.9.0+cpu，PyTorch 官方 aarch64 wheel |
 | torch_npu | 2.9.0.post2，昇腾社区公开 aarch64 wheel |
-| Triton | FlagTree `0.6.0+triton3.5` release 的 Ascend backend |
+| Triton | FlagTree `5858e827ed0c66cebd5248e0200edb81cdd838a4`（`0.6.0+triton3.5` release）的 Ascend backend |
 | FlagRAND | 当前交付包源码 |
 
 最终只产生一个 FlagRAND 运行镜像。FlagRAND 不依赖 ATB、NNAL、vLLM、FlagGems、CUDA、cuDNN 或内部基础镜像。
@@ -27,70 +27,59 @@
 3. 构建阶段可以访问 Docker Hub、华为昇腾下载站、PyTorch、GitCode、GitHub 和 Python.org。
 4. Docker 数据目录至少保留 40 GB 可用空间。
 
-进入节点后先执行：
+## 直接验收
+
+克隆交付分支并执行唯一入口：
 
 ```bash
-uname -m
-npu-smi info
-docker info | sed -n '/Runtimes/p'
+git clone \
+    --branch wuyu/ppu-910c-integration \
+    --single-branch \
+    https://github.com/flagos-ai/FlagRAND.git \
+    /home/flagrand_910c_acceptance
+
+cd /home/flagrand_910c_acceptance
+bash run_ascend_910c_acceptance.sh
 ```
 
-预期架构为 `aarch64`，`npu-smi info` 能看到 910C，Docker runtimes 中包含 `ascend`。
+脚本依次完成完整镜像构建和七 API 正式验收。构建与运行日志、结果压缩包统一保存在：
 
-## 第一步：解压源码
+```text
+ascend_910c_delivery_results/<运行时间>/
+```
+
+最终成功标志为：
+
+```text
+IMAGE BUILD: PASS
+ASCEND 910C V6 STATUS: PASS
+FLAGRAND ASCEND 910C DELIVERY: PASS
+```
+
+## 使用网页上传的源码包
 
 将交付压缩包上传到节点的 `/tmp`，然后执行：
 
 ```bash
 mkdir -p /home/flagrand_ascend910c_delivery
 tar -xzf /tmp/FlagRAND_Ascend910C_public_build_20260817.tar.gz \
-    -C /home/flagrand_ascend910c_delivery
-cd /home/flagrand_ascend910c_delivery/FlagRAND-pr1
-```
-
-## 第二步：构建镜像
-
-```bash
-bash docker/ascend910c/build.sh
-```
-
-该命令直接从公开源下载并安装全部依赖。构建结束时应显示：
-
-```text
-Ascend 910C image: flagrand-ascend910c:cann9.0-flagtree3.5
-IMAGE BUILD: PASS
-```
-
-## 第三步：执行正式验收
-
-```bash
-bash docker/ascend910c/run.sh
-```
-
-该命令使用 0 号 NPU，依次执行环境记录、preflight、pytest 正确性检查以及七个 API 的独立进程端到端性能验收。正式阈值为每个 API 的聚合 speedup 不低于 `0.95x`。
-
-成功结束时应显示：
-
-```text
-ASCEND 910C V6 STATUS: PASS
-```
-
-结果压缩包保存在：
-
-```text
-ascend_910c_delivery_results/<运行时间>/FlagRAND_910C_results_<运行时间>.tar.gz
+    -C /home/flagrand_ascend910c_delivery \
+    --strip-components=1
+cd /home/flagrand_ascend910c_delivery
+bash run_ascend_910c_acceptance.sh
 ```
 
 使用其他 NPU 时执行：
 
 ```bash
-FLAGRAND_DEVICE=1 bash docker/ascend910c/run.sh
+FLAGRAND_DEVICE=1 bash run_ascend_910c_acceptance.sh
 ```
 
 ## 文件职责
 
 | 文件 | 用途 |
 |---|---|
+| `run_ascend_910c_acceptance.sh` | 从构建镜像到正式验收的唯一宿主机入口 |
 | `docker/ascend910c/Dockerfile` | 从 Ubuntu 22.04 构建完整 910C 运行环境 |
 | `docker/ascend910c/build.sh` | 一键构建镜像 |
 | `docker/ascend910c/run.sh` | 一键启动容器并持久化验收结果 |

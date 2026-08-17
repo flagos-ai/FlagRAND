@@ -4,7 +4,7 @@ SHELL ["/bin/bash", "-c"]
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG PYTHON_VERSION=3.11.15
-ARG FLAGTREE_REF=0.6.0+triton3.5
+ARG FLAGTREE_COMMIT=5858e827ed0c66cebd5248e0200edb81cdd838a4
 ARG MAX_JOBS=8
 ARG CANN_TOOLKIT_URL=https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-toolkit_9.0.0_linux-aarch64.run
 ARG CANN_OPS_URL=https://ascend-repo.obs.cn-east-2.myhuaweicloud.com/CANN/CANN%209.0.0/Ascend-cann-A3-ops_9.0.0_linux-aarch64.run
@@ -104,9 +104,11 @@ RUN curl -fL "${TORCH_URL}" \
         /tmp/torch_npu-2.9.0.post2-cp311-cp311-manylinux_2_28_aarch64.whl \
     && rm -f /tmp/torch_npu-2.9.0.post2-cp311-cp311-manylinux_2_28_aarch64.whl
 
-RUN git clone --depth 1 --branch "${FLAGTREE_REF}" \
-        https://github.com/flagos-ai/FlagTree.git /opt/FlagTree \
+RUN git init /opt/FlagTree \
     && cd /opt/FlagTree \
+    && git remote add origin https://github.com/flagos-ai/FlagTree.git \
+    && git fetch --depth 1 origin "${FLAGTREE_COMMIT}" \
+    && git checkout --detach FETCH_HEAD \
     && python3 -m pip install --no-cache-dir -r python/requirements.txt \
     && source /usr/local/Ascend/ascend-toolkit/set_env.sh \
     && FLAGTREE_BACKEND=ascend MAX_JOBS="${MAX_JOBS}" \
