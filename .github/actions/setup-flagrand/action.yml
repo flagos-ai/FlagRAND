@@ -24,4 +24,5 @@ runs:
         echo "$GPU_OUTPUT"
         AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | sed -n 's/^Available GPUs: //p')
         echo "AVAILABLE_GPUS=$AVAILABLE_GPUS" >> "$GITHUB_ENV"
+        echo "PYTHON_BIN=$PWD/.venv/bin/python" >> "$GITHUB_ENV"
         echo "$PWD/.venv/bin" >> "$GITHUB_PATH"

@@ -32,9 +32,13 @@ run_capture() {
 
 run_capture "$LOG_DIR/environment.log" "$PYTHON_BIN" - <<'PY'
 import logging
+import pkgutil
 
 import torch
 import triton
+import triton.backends
+
+from triton.runtime.driver import driver
 
 import flagrand
 from flagrand.runtime import current_backend, current_vendor, device
@@ -44,6 +48,11 @@ logger = logging.getLogger("flagrand.ci.environment")
 logger.info("flagrand: %s", flagrand.__file__)
 logger.info("torch: %s", torch.__version__)
 logger.info("triton: %s", triton.__version__)
+logger.info("triton target: %s", driver.active.get_current_target())
+logger.info(
+    "triton backend modules: %s",
+    ", ".join(sorted(module.name for module in pkgutil.iter_modules(triton.backends.__path__))),
+)
 logger.info("vendor: %s", current_vendor())
 logger.info("backend: %s", current_backend())
 logger.info("device: %s", device.name)
@@ -63,6 +72,7 @@ if [[ -n "$OPERATOR" ]]; then
                 --device "${FLAGRAND_DEVICE:-0}" \
                 --profile smoke \
                 --distributions "$OPERATOR" \
+                --allow-unverified-910c \
                 --results-dir "$PROJECT_DIR/ascend_910c_results/ondemand_$RUN_ID"
             ;;
         iluvatar)
@@ -86,8 +96,21 @@ fi
 
 case "$BACKEND" in
     ascend-cann900)
-        export FLAGRAND_PERF_PROFILE="$PROFILE"
-        run_capture "$LOG_DIR/hardware-ci.log" bash scripts/ci/run_ascend_910c_ci.sh
+        run_capture "$LOG_DIR/pytest.log" \
+            "$PYTHON_BIN" -m pytest -q tests/accuracy
+        ASCEND_PROFILE="$PROFILE"
+        ASCEND_PROFILE_ARGS=()
+        if [[ "$ASCEND_PROFILE" == "acceptance" ]]; then
+            ASCEND_PROFILE=full
+            ASCEND_PROFILE_ARGS+=(--acceptance-profile)
+        fi
+        run_capture "$LOG_DIR/benchmark.log" \
+            "$PYTHON_BIN" -m benchmark.run_ascend_910c \
+            --device "${FLAGRAND_DEVICE:-0}" \
+            --profile "$ASCEND_PROFILE" \
+            --allow-unverified-910c \
+            "${ASCEND_PROFILE_ARGS[@]}" \
+            --results-dir "$PROJECT_DIR/ascend_910c_results/ci_$RUN_ID"
         ;;
     iluvatar)
         run_capture "$LOG_DIR/pytest.log" \

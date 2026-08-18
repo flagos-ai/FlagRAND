@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shlex
 import tempfile
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,13 @@ def install_ppu_compiler_compatibility() -> None:
     global _COMPATIBILITY_INSTALLED
 
     if _COMPATIBILITY_INSTALLED:
+        return
+
+    # The PPU 2.0 Triton package used by FlagGems exposes its compiler through
+    # the CUDA-compatible backend.  Only older FlagTree builds publish the
+    # standalone ``triton.backends.ppu`` module that needs this llc proxy.
+    if find_spec("triton.backends.ppu") is None:
+        _COMPATIBILITY_INSTALLED = True
         return
 
     from triton.backends.ppu import compiler as ppu_compiler

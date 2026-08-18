@@ -1,0 +1,30 @@
+pypi_base: "https://resource.flagos.net/repository/flagos-pypi-{vendor}/simple"
+mirror: "https://mirrors.aliyun.com/pypi/simple"
+
+backends:
+  ascend-cann900:
+    python: "3.11"
+    triton:
+      - triton==3.5.0
+    triton_post_install:
+      - triton_ascend==3.2.1
+    deps:
+      - torch==2.10.0+cpu
+      - torch-npu==2.10.0
+      - numpy<2
+
+  iluvatar:
+    python: "3.10"
+    triton:
+      - triton==3.1.0+corex.4.4.0
+    deps:
+      - torch==2.7.1+corex.4.4.0
+      - numpy<2
+
+  thead:
+    python: "3.12"
+    triton:
+      - triton==3.5.0+ppu2.0.0.oe
+    deps:
+      - torch==2.9.0+ppu2.0.0.oe
+      - numpy<2

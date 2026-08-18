@@ -5,17 +5,23 @@ BACKEND="$1"
 
 case "$BACKEND" in
     ascend-cann900)
+        set +u
         source /usr/local/Ascend/cann/set_env.sh
+        set -u
         export FLAGRAND_VENDOR=ascend
         ;;
     iluvatar)
         export COREX_HOME=/usr/local/corex
         export PATH="$COREX_HOME/bin:$PATH"
         export LD_LIBRARY_PATH="$COREX_HOME/lib:$COREX_HOME/lib64:${LD_LIBRARY_PATH:-}"
+        export LIBRARY_PATH="$COREX_HOME/lib:$COREX_HOME/lib64:${LIBRARY_PATH:-}"
+        export CPATH="$COREX_HOME/include${CPATH:+:$CPATH}"
         export FLAGRAND_VENDOR=iluvatar
         ;;
     thead)
+        set +u
         source /usr/local/PPU_SDK/envsetup.sh
+        set -u
         export FLAGRAND_VENDOR=thead
         ;;
     *)
