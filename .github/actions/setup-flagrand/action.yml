@@ -1,0 +1,27 @@
+name: Setup FlagRAND
+description: Prepare a vendor runtime and report available accelerator devices
+
+inputs:
+  backend:
+    description: FlagRAND backend name
+    required: true
+  gpu_check_script:
+    description: Vendor device discovery script
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Setup FlagRAND
+      shell: bash
+      run: ./setup.sh "${{ inputs.backend }}"
+
+    - name: Check accelerator availability
+      shell: bash
+      run: |
+        source scripts/ci/backend_env.sh "${{ inputs.backend }}"
+        GPU_OUTPUT=$(bash "${{ inputs.gpu_check_script }}")
+        echo "$GPU_OUTPUT"
+        AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | sed -n 's/^Available GPUs: //p')
+        echo "AVAILABLE_GPUS=$AVAILABLE_GPUS" >> "$GITHUB_ENV"
+        echo "$PWD/.venv/bin" >> "$GITHUB_PATH"

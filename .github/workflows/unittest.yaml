@@ -1,0 +1,88 @@
+name: unit-test
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend:
+        description: Hardware backend to test
+        required: true
+        default: all
+        type: choice
+        options: [all, iluvatar, thead, ascend-cann900]
+      profile:
+        description: Performance profile
+        required: true
+        default: smoke
+        type: choice
+        options: [smoke, acceptance]
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  preprocess:
+    runs-on: ubuntu-latest
+    outputs:
+      labels: ${{ steps.matrix.outputs.labels }}
+      backend_matrix: ${{ steps.matrix.outputs.backend_matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/backends.json
+          sparse-checkout-cone-mode: false
+      - id: matrix
+        uses: actions/github-script@v7
+        env:
+          REQUESTED_BACKEND: ${{ inputs.backend || '' }}
+        with:
+          script: |
+            const fs = require('fs');
+            const backends = JSON.parse(fs.readFileSync('.github/backends.json', 'utf8'));
+            let labels = [];
+            let selected = [];
+
+            if (context.eventName === 'pull_request') {
+              const {data} = await github.rest.issues.listLabelsOnIssue({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+              });
+              labels = data.map(label => label.name);
+              if (labels.includes('tests') || labels.includes('core')) {
+                selected = backends.filter(backend => backend.enabled);
+              } else {
+                selected = backends.filter(backend => backend.enabled && labels.includes(backend.label));
+              }
+            } else if (context.eventName === 'workflow_dispatch') {
+              const requested = process.env.REQUESTED_BACKEND;
+              selected = backends.filter(backend =>
+                backend.enabled && (requested === 'all' || backend.backend === requested));
+            }
+
+            const include = selected.map(backend => ({
+              backend: backend.backend,
+              runner_label: backend.runner_label,
+              gpu_check: backend.gpu_check,
+            }));
+            core.setOutput('labels', JSON.stringify(labels));
+            core.setOutput('backend_matrix', JSON.stringify({include}));
+            core.info(`Selected backends: ${include.map(item => item.backend).join(', ') || 'none'}`);
+
+  backend-tests:
+    needs: preprocess
+    if: fromJSON(needs.preprocess.outputs.backend_matrix).include[0] != null
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.preprocess.outputs.backend_matrix) }}
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      backend: ${{ matrix.backend }}
+      runner_label: ${{ matrix.runner_label }}
+      gpu_check_script: ${{ matrix.gpu_check }}
+      profile: ${{ inputs.profile || 'smoke' }}

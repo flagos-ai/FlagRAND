@@ -15,9 +15,7 @@ def _module_functions(module: ModuleType | None) -> list[tuple[str, object]]:
     if module is None:
         return []
     return [
-        (name, fn)
-        for name, fn in inspect.getmembers(module, inspect.isfunction)
-        if fn.__module__ == module.__name__
+        (name, fn) for name, fn in inspect.getmembers(module, inspect.isfunction) if fn.__module__ == module.__name__
     ]
 
 
@@ -67,10 +65,7 @@ def get_vendor_info(vendor_name: str | None = None, *, query: bool = False) -> V
 
 
 def get_vendor_infos() -> list[VendorDescriptor]:
-    return [
-        get_vendor_info(vendor_name, query=True)
-        for vendor_name in vendors.get_all_vendors()
-    ]
+    return [get_vendor_info(vendor_name, query=True) for vendor_name in vendors.get_all_vendors()]
 
 
 def activate_backend(vendor_name: str) -> None:
@@ -124,8 +119,6 @@ class BackendArchEvent(BackendEventBase):
         vendor_module = _state.vendor_module
         if vendor_module is None or not hasattr(vendor_module, "ARCH_MAP"):
             return
-        import torch
-
         properties = gen_torch_device_object().get_device_properties(0)
         keys = [f"{properties.major}.{properties.minor}", str(properties.major)]
         arch = next((vendor_module.ARCH_MAP[key] for key in keys if key in vendor_module.ARCH_MAP), None)

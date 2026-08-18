@@ -1,0 +1,23 @@
+[
+  {
+    "backend": "ascend-cann900",
+    "runner_label": "cann9",
+    "label": "vendor/Ascend",
+    "gpu_check": "tools/gpu_check_ascend.sh",
+    "enabled": true
+  },
+  {
+    "backend": "iluvatar",
+    "runner_label": "iluvatar",
+    "label": "vendor/Iluvatar",
+    "gpu_check": "tools/gpu_check_iluvatar.sh",
+    "enabled": true
+  },
+  {
+    "backend": "thead",
+    "runner_label": "thead",
+    "label": "vendor/THead",
+    "gpu_check": "tools/gpu_check_thead.sh",
+    "enabled": true
+  }
+]

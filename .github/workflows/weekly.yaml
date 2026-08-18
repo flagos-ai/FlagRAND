@@ -1,0 +1,64 @@
+name: weekly
+
+on:
+  schedule:
+    - cron: '30 13 * * 3,6'
+  workflow_dispatch:
+    inputs:
+      backend:
+        description: Weekly hardware target
+        required: true
+        default: all
+        type: choice
+        options: [all, BI-V150, PPU-ZW810E, Ascend-CANN9]
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/configs/weekly
+          sparse-checkout-cone-mode: false
+      - name: Install YAML parser
+        run: python -m pip install PyYAML
+      - id: matrix
+        env:
+          REQUESTED_BACKEND: ${{ inputs.backend || 'all' }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          import yaml
+
+          root = Path('.github/configs/weekly')
+          enabled = yaml.safe_load((root / 'weekly-test.yaml').read_text())['backends']
+          requested = os.environ['REQUESTED_BACKEND']
+          include = []
+          for hardware, state in enabled.items():
+              if not state['enabled'] or requested not in {'all', hardware}:
+                  continue
+              config = yaml.safe_load((root / f'{hardware}.yml').read_text())
+              include.append({'hardware': hardware, **config})
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write('matrix=' + json.dumps({'include': include}, separators=(',', ':')) + '\n')
+          PY
+
+  test:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    uses: ./.github/workflows/backend-test.yaml
+    with:
+      backend: ${{ matrix.backend }}
+      runner_label: ${{ matrix.runner_label }}
+      gpu_check_script: ${{ matrix.gpu_check }}
+      profile: ${{ matrix.profile }}

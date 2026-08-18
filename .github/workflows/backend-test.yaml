@@ -1,0 +1,66 @@
+name: Backend Test
+
+on:
+  workflow_call:
+    inputs:
+      backend:
+        description: FlagRAND backend name
+        required: true
+        type: string
+      runner_label:
+        description: GitHub Actions runner label
+        required: true
+        type: string
+      gpu_check_script:
+        description: Vendor device discovery script
+        required: true
+        type: string
+      profile:
+        description: Performance profile
+        required: false
+        default: smoke
+        type: string
+      operator:
+        description: Optional single API name
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ inputs.runner_label }}
+    timeout-minutes: 180
+    concurrency:
+      group: flagrand-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-flagrand
+        with:
+          backend: ${{ inputs.backend }}
+          gpu_check_script: ${{ inputs.gpu_check_script }}
+
+      - name: Run FlagRAND correctness and performance
+        shell: bash
+        env:
+          FLAGRAND_PERF_PROFILE: ${{ inputs.profile }}
+          FLAGRAND_TEST_OP: ${{ inputs.operator }}
+        run: bash scripts/ci/run_backend_ci.sh "${{ inputs.backend }}"
+
+      - name: Upload FlagRAND results
+        id: upload-results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flagrand-${{ inputs.backend }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ci_logs/
+            corex_results/
+            ppu_logs/
+            ppu_results/
+            ascend_910c_logs/
+            ascend_910c_results/
+          if-no-files-found: warn

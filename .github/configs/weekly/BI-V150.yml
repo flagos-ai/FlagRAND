@@ -1,0 +1,4 @@
+backend: iluvatar
+runner_label: iluvatar
+gpu_check: tools/gpu_check_iluvatar.sh
+profile: acceptance

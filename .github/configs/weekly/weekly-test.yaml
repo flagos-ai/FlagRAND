@@ -1,0 +1,7 @@
+backends:
+  BI-V150:
+    enabled: true
+  PPU-ZW810E:
+    enabled: true
+  Ascend-CANN9:
+    enabled: true

@@ -1,0 +1,54 @@
+benchmark:
+  - changed-files:
+      - any-glob-to-any-file: benchmark/**
+
+ci/cd:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**
+          - scripts/ci/**
+          - setup.sh
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - tests/**
+          - tools/**
+          - conf/**
+
+vendor/Ascend:
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/flagrand/ascend/**
+          - src/flagrand/runtime/backend/_ascend/**
+          - benchmark/ascend_910c/**
+          - benchmark/run_ascend_910c.py
+          - scripts/**/*ascend*
+
+vendor/Iluvatar:
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/flagrand/corex/**
+          - src/flagrand/runtime/backend/_iluvatar/**
+          - benchmark/corex_matrix/**
+          - benchmark/run_corex.py
+
+vendor/THead:
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/flagrand/runtime/backend/_thead/**
+          - src/flagrand/runtime/ppu_compiler.py
+          - benchmark/ppu_matrix/**
+          - benchmark/run_ppu.py
+          - scripts/**/*ppu*
+
+core:
+  - changed-files:
+      - any-glob-to-any-file:
+          - pyproject.toml
+          - src/flagrand/*.py
+          - src/flagrand/rng/**
+          - src/flagrand/ops/**
+          - src/flagrand/fused/**
+          - src/flagrand/runtime/*.py
+          - src/flagrand/runtime/backend/*.py

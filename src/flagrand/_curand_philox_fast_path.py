@@ -59,9 +59,7 @@ def try_generate_uniform(
         block_size=block_size,
         num_warps=num_warps,
         **(
-            {"use_libtuner_kernel": True}
-            if out.dtype == torch.float32 and use_libtuner() and not manual_config
-            else {}
+            {"use_libtuner_kernel": True} if out.dtype == torch.float32 and use_libtuner() and not manual_config else {}
         ),
     )
     return True
@@ -98,10 +96,7 @@ def try_generate_normal(
         num_warps=num_warps,
         **(
             {"use_libtuner_kernel": True}
-            if use_libtuner()
-            and not manual_config
-            and not lognormal
-            and out.dtype in {torch.float32, torch.float64}
+            if use_libtuner() and not manual_config and not lognormal and out.dtype in {torch.float32, torch.float64}
             else {}
         ),
     )

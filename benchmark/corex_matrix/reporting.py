@@ -76,9 +76,7 @@ def write_results(
     manifest: dict[str, Any],
     records: list[dict[str, Any]],
 ) -> None:
-    (run_directory / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    (run_directory / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
     with (run_directory / "records.jsonl").open("w", encoding="utf-8") as stream:
         for record in records:
             stream.write(json.dumps(record, ensure_ascii=False) + "\n")

@@ -14,8 +14,8 @@ device = DeviceDetector()
 activate_backend(device.vendor_name)
 torch_device_fn = backend.gen_torch_device_object()
 
-from flagrand.runtime.compiled_launcher import CachedKernelLauncher
-from flagrand.runtime.libtuner import HAS_LIBTUNER, libtuner_status, require_libtuner, use_libtuner
+from flagrand.runtime.compiled_launcher import CachedKernelLauncher  # noqa: E402
+from flagrand.runtime.libtuner import HAS_LIBTUNER, libtuner_status, require_libtuner, use_libtuner  # noqa: E402
 
 __all__ = [
     "CachedKernelLauncher",

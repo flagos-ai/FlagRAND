@@ -1,0 +1,4 @@
+backend: ascend-cann900
+runner_label: cann9
+gpu_check: tools/gpu_check_ascend.sh
+profile: acceptance

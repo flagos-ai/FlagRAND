@@ -9,7 +9,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-
 DTYPE_MAP = {
     "float16": "fp16",
     "float32": "fp32",
@@ -68,6 +67,7 @@ def build_summary(
 def collect_environment(manifest: dict[str, Any]) -> dict[str, Any]:
     import torch
     import triton
+
     from flagrand import __version__ as flagrand_version
     from flagrand.runtime import device as runtime_device
 
@@ -229,9 +229,7 @@ def _performance_result(
         result["reason"] = "; ".join(failed_cases)
     elif missing_baselines:
         result["status"] = "Skipped"
-        reasons = "; ".join(
-            f"{reason} ({len(cases)} shapes)" for reason, cases in missing_baselines.items()
-        )
+        reasons = "; ".join(f"{reason} ({len(cases)} shapes)" for reason, cases in missing_baselines.items())
         result["reason"] = f"{baseline_backend}: {reasons}"
     return result
 

@@ -1,0 +1,114 @@
+name: ondemand test
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  issues: write
+  contents: read
+
+jobs:
+  preprocess:
+    runs-on: ubuntu-latest
+    outputs:
+      continue: ${{ steps.check.outputs.continue }}
+      operator: ${{ steps.parse.outputs.operator }}
+      runner: ${{ steps.parse.outputs.runner }}
+      backend: ${{ steps.parse.outputs.backend }}
+      gpu_check: ${{ steps.parse.outputs.gpu_check }}
+      pull: ${{ github.event.issue.number }}
+    steps:
+      - id: check
+        uses: github/command@3442f3fa1efe01bdb024b157083c337902d17372
+        with:
+          command: /test
+          allowed_contexts: pull_request
+          allow_forks: 'true'
+          skip_reviews: 'true'
+          fork_review_bypass: 'true'
+          permissions: write,admin
+          param_separator: ' '
+      - id: parse
+        if: steps.check.outputs.continue == 'true'
+        env:
+          COMMENT_BODY: ${{ steps.check.outputs.comment_body }}
+        run: |
+          PARAMS="${COMMENT_BODY#/test }"
+          OPERATOR="${PARAMS%%:*}"
+          RUNNER="${PARAMS##*:}"
+          case "$RUNNER" in
+            iluvatar)
+              BACKEND=iluvatar
+              GPU_CHECK=tools/gpu_check_iluvatar.sh
+              ;;
+            thead)
+              BACKEND=thead
+              GPU_CHECK=tools/gpu_check_thead.sh
+              ;;
+            cann9)
+              BACKEND=ascend-cann900
+              GPU_CHECK=tools/gpu_check_ascend.sh
+              ;;
+            *)
+              echo "Unsupported runner: $RUNNER" >&2
+              exit 2
+              ;;
+          esac
+          echo "operator=$OPERATOR" >> "$GITHUB_OUTPUT"
+          echo "runner=$RUNNER" >> "$GITHUB_OUTPUT"
+          echo "backend=$BACKEND" >> "$GITHUB_OUTPUT"
+          echo "gpu_check=$GPU_CHECK" >> "$GITHUB_OUTPUT"
+
+  test-operator:
+    needs: preprocess
+    if: needs.preprocess.outputs.continue == 'true'
+    runs-on: ${{ needs.preprocess.outputs.runner }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ needs.preprocess.outputs.pull }}/merge
+      - uses: ./.github/actions/setup-flagrand
+        with:
+          backend: ${{ needs.preprocess.outputs.backend }}
+          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
+      - name: Test requested API
+        env:
+          FLAGRAND_TEST_OP: ${{ needs.preprocess.outputs.operator }}
+          FLAGRAND_PERF_PROFILE: smoke
+        run: bash scripts/ci/run_backend_ci.sh "${{ needs.preprocess.outputs.backend }}"
+      - id: upload-results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.preprocess.outputs.operator }}-${{ needs.preprocess.outputs.backend }}-${{ github.run_id }}
+          path: |
+            ci_logs/
+            corex_results/
+            ppu_results/
+            ascend_910c_results/
+          if-no-files-found: warn
+      - name: Comment result link
+        if: success()
+        uses: mshick/add-pr-comment@v2
+        with:
+          message-id: ${{ needs.preprocess.outputs.operator }}-${{ needs.preprocess.outputs.runner }}
+          message: |
+            ## FlagRAND on-demand test passed
+
+            - API: `${{ needs.preprocess.outputs.operator }}`
+            - Runner: `${{ needs.preprocess.outputs.runner }}`
+            - Backend: `${{ needs.preprocess.outputs.backend }}`
+            - [Download summary.json and logs](${{ steps.upload-results.outputs.artifact-url }})
+      - name: Comment failure
+        if: failure()
+        uses: mshick/add-pr-comment@v2
+        with:
+          message-id: ${{ needs.preprocess.outputs.operator }}-${{ needs.preprocess.outputs.runner }}
+          message: |
+            ## FlagRAND on-demand test failed
+
+            API `${{ needs.preprocess.outputs.operator }}` failed on `${{ needs.preprocess.outputs.runner }}`.
+            [Inspect the workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).

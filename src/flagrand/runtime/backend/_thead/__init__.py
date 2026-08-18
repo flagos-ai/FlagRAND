@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from flagrand.runtime.backend.backend_utils import VendorDescriptor
 
-
 vendor_info = VendorDescriptor(
     vendor_name="thead",
     device_name="cuda",

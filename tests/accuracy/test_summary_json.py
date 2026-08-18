@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from benchmark.summary_json import build_summary
 
-
 ENVIRONMENT = {
     "architecture": "x86_64",
     "os_name": "ubuntu",
@@ -80,9 +79,7 @@ def test_summary_marks_unsupported_baseline_without_fake_measurements() -> None:
     operator = summary["result"]["uniform_f64"]
     assert operator["accuracy"]["status"] == "Passed"
     assert operator["performance"]["status"] == "Skipped"
-    assert operator["performance"]["data"] == {
-        "torch.float64": {"result": "Unknown", "details": {}, "speedup": 0}
-    }
+    assert operator["performance"]["data"] == {"torch.float64": {"result": "Unknown", "details": {}, "speedup": 0}}
     assert "CURAND_STATUS_DOUBLE_PRECISION_REQUIRED" in operator["performance"]["reason"]
 
 
@@ -103,9 +100,7 @@ def test_summary_groups_accuracy_failures_by_reason() -> None:
     accuracy = summary["result"]["normal_f32"]["accuracy"]
     assert accuracy["status"] == "Failed"
     assert accuracy["failed"] == 1
-    assert accuracy["details"] == {
-        "failed": {"failed checks: mean,std": ["normal_f32:(8192,)"]}
-    }
+    assert accuracy["details"] == {"failed": {"failed checks: mean,std": ["normal_f32:(8192,)"]}}
 
 
 def test_summary_selects_the_platform_acceptance_baseline() -> None:

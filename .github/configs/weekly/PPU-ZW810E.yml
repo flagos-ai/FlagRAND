@@ -1,0 +1,4 @@
+backend: thead
+runner_label: thead
+gpu_check: tools/gpu_check_thead.sh
+profile: acceptance
