@@ -69,6 +69,7 @@ def collect_environment(manifest: dict[str, Any]) -> dict[str, Any]:
     import torch
     import triton
     from flagrand import __version__ as flagrand_version
+    from flagrand.runtime import device as runtime_device
 
     platform_name = str(manifest["platform"])
     source = manifest.get("environment", {})
@@ -78,20 +79,12 @@ def collect_environment(manifest: dict[str, Any]) -> dict[str, Any]:
         device_name = source["device_name"]
         device_count = torch.npu.device_count()
         cuda_available = torch.cuda.is_available()
-        vendor = "huawei"
-        device = "npu"
     else:
         torch_version = source["torch"]
         device_info = source.get("device", "N/A")
         device_name = device_info.get("name", "N/A") if isinstance(device_info, dict) else device_info
         device_count = int(source.get("device_count", torch.cuda.device_count()))
         cuda_available = torch.cuda.is_available()
-        vendor = {
-            "iluvatar_bi_v150_corex": "iluvatar",
-            "PPU": "ppu",
-            "muxi": "muxi",
-        }[platform_name]
-        device = "cuda"
 
     try:
         flagtree_version: str | None = importlib.metadata.version("flagtree")
@@ -117,8 +110,8 @@ def collect_environment(manifest: dict[str, Any]) -> dict[str, Any]:
         },
         "flagrand": {
             "version": flagrand_version,
-            "vendor": vendor,
-            "device": device,
+            "vendor": runtime_device.vendor_name,
+            "device": runtime_device.name,
         },
     }
 

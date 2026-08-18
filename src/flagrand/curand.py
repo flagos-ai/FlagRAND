@@ -10,6 +10,9 @@ from flagrand._curand_handle import (
     set_pseudo_random_generator_seed,
 )
 from flagrand._curand_philox_fast_path import try_generate_normal, try_generate_raw, try_generate_uniform
+from flagrand.runtime import SpecOpRegistrar, device
+
+SpecOpRegistrar(registry=globals(), vendor=device.vendor_name).apply()
 
 
 def generate(

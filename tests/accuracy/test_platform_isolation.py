@@ -10,6 +10,8 @@ SHARED_TRITON_SOURCES = (
 )
 ASCEND_SOURCE = PROJECT_ROOT / "src/flagrand/ascend/huawei910c.py"
 HOST_DISPATCH_SOURCE = PROJECT_ROOT / "src/flagrand/_curand_philox_fast_path.py"
+ASCEND_OPS_SOURCE = PROJECT_ROOT / "src/flagrand/runtime/backend/_ascend/ops.py"
+ILUVATAR_OPS_SOURCE = PROJECT_ROOT / "src/flagrand/runtime/backend/_iluvatar/ops.py"
 
 
 def _imported_modules(path: Path) -> set[str]:
@@ -52,3 +54,17 @@ def test_host_dispatch_has_no_eager_ascend_import() -> None:
         node.module for node in tree.body if isinstance(node, ast.ImportFrom) and node.module is not None
     }
     assert not any(module.startswith("flagrand.ascend") for module in top_level_imports)
+
+
+def test_generic_dispatch_has_no_vendor_branches() -> None:
+    source = HOST_DISPATCH_SOURCE.read_text()
+    imports = _imported_modules(HOST_DISPATCH_SOURCE)
+    assert "corex" not in source.lower()
+    assert "ascend" not in source.lower()
+    assert not any(module.startswith("flagrand.corex") for module in imports)
+    assert not any(module.startswith("flagrand.ascend") for module in imports)
+
+
+def test_specialized_ops_live_under_vendor_backends() -> None:
+    assert any(module.startswith("flagrand.ascend") for module in _imported_modules(ASCEND_OPS_SOURCE))
+    assert any(module.startswith("flagrand.corex") for module in _imported_modules(ILUVATAR_OPS_SOURCE))
