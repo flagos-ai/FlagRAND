@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from benchmark.summary_json import write_summary_json
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -36,6 +38,7 @@ def write_results(
         _render_summary(manifest, records),
         encoding="utf-8",
     )
+    write_summary_json(run_directory, manifest, records)
 
 
 def build_acceptance_summary(

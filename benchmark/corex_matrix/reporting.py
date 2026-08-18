@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from benchmark.summary_json import write_summary_json
+
 LOGGER = logging.getLogger(__name__)
 
 
@@ -82,6 +84,7 @@ def write_results(
             stream.write(json.dumps(record, ensure_ascii=False) + "\n")
     _write_csv(run_directory / "records.csv", records)
     (run_directory / "summary.md").write_text(_render_summary(manifest, records), encoding="utf-8")
+    write_summary_json(run_directory, manifest, records)
 
 
 def _write_csv(path: Path, records: list[dict[str, Any]]) -> None:

@@ -8,6 +8,8 @@ from flagrand._curand_handle import (
 )
 from flagrand.rng import PhiloxGenerator
 
+__version__ = "0.1.0"
+
 __all__ = [
     "curand",
     "CURAND_RNG_PSEUDO_PHILOX4_32_10",
