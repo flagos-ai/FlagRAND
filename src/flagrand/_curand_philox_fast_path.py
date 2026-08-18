@@ -60,6 +60,13 @@ def _corex_generators() -> tuple[CorexGenerator, CorexGenerator, CorexGenerator,
     )
 
 
+@lru_cache(maxsize=1)
+def _corex_uniform_f64_generator() -> CorexGenerator:
+    from flagrand.corex import generate_corex_uniform_f64
+
+    return generate_corex_uniform_f64
+
+
 def try_generate_raw(
     generator: object,
     out: torch.Tensor,
@@ -129,14 +136,22 @@ def try_generate_uniform(
             )
         return True
 
-    if out.dtype == torch.float32 and current_backend() == "corex":
-        _, generate_corex_uniform_f32, _, _ = _corex_generators()
-        generate_corex_uniform_f32(
-            out,
-            engine,
-            block_size=block_size,
-            num_warps=num_warps,
-        )
+    if current_backend() == "corex":
+        if out.dtype == torch.float64:
+            _corex_uniform_f64_generator()(
+                out,
+                engine,
+                block_size=block_size,
+                num_warps=num_warps,
+            )
+        else:
+            _, generate_corex_uniform_f32, _, _ = _corex_generators()
+            generate_corex_uniform_f32(
+                out,
+                engine,
+                block_size=block_size,
+                num_warps=num_warps,
+            )
         return True
 
     operation = generate_philox_uniform_f64 if out.dtype == torch.float64 else generate_philox_uniform_f32

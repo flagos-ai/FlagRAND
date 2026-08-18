@@ -25,12 +25,71 @@ def _logical_words(seed, counter):
 
 
 @triton.jit
+def _logical_window4(seed, counter, SHIFT: tl.constexpr):
+    a0, a1, a2, a3 = _logical_words(seed, counter)
+    if SHIFT == 0:
+        return a0, a1, a2, a3
+    b0, b1, b2, b3 = _logical_words(seed, counter + 1)
+    if SHIFT == 1:
+        return a1, a2, a3, b0
+    if SHIFT == 2:
+        return a2, a3, b0, b1
+    return a3, b0, b1, b2
+
+
+@triton.jit
 def _uniform_f32(raw):
     signed = raw.to(tl.int32, bitcast=True)
     value = signed.to(tl.float32)
     unsigned = tl.where(signed < 0, value + 4294967296.0, value)
     uniform = 1.0 - unsigned * 2.3283064365386963e-10
     return tl.maximum(tl.minimum(uniform, 1.0), 1.1920928955078125e-7)
+
+
+@triton.jit
+def _dyadic53_to_f64(value):
+    is_one = value == (1 << 53)
+    work = tl.where(is_one, (1 << 52), value)
+    normalized = work
+    exponent = tl.zeros_like(work).to(tl.int32)
+
+    high = normalized >> 32
+    take = high != 0
+    normalized = tl.where(take, high, normalized)
+    exponent += tl.where(take, 32, 0)
+    high = normalized >> 16
+    take = high != 0
+    normalized = tl.where(take, high, normalized)
+    exponent += tl.where(take, 16, 0)
+    high = normalized >> 8
+    take = high != 0
+    normalized = tl.where(take, high, normalized)
+    exponent += tl.where(take, 8, 0)
+    high = normalized >> 4
+    take = high != 0
+    normalized = tl.where(take, high, normalized)
+    exponent += tl.where(take, 4, 0)
+    high = normalized >> 2
+    take = high != 0
+    normalized = tl.where(take, high, normalized)
+    exponent += tl.where(take, 2, 0)
+    high = normalized >> 1
+    take = high != 0
+    exponent += tl.where(take, 1, 0)
+
+    mantissa = (work << (52 - exponent)) & ((1 << 52) - 1)
+    ieee_exponent = (exponent + 970).to(tl.uint64)
+    bits = (ieee_exponent << 52) | mantissa
+    bits = tl.where(is_one, 0x3FF0000000000000, bits)
+    return bits.to(tl.float64, bitcast=True)
+
+
+@triton.jit
+def _uniform_f64(raw0, raw1):
+    hi = raw0.to(tl.uint32, bitcast=True).to(tl.uint64) >> 5
+    lo = raw1.to(tl.uint32, bitcast=True).to(tl.uint64) >> 6
+    mantissa = (hi << 26) | lo
+    return _dyadic53_to_f64((1 << 53) - mantissa)
 
 
 @triton.jit
@@ -64,6 +123,34 @@ def _uniform_generic_kernel(out, seed, offset, n, BLOCK: tl.constexpr):
     w0, w1, w2, w3 = _logical_words(seed, counter)
     raw = tl.where(lane == 0, w0, tl.where(lane == 1, w1, tl.where(lane == 2, w2, w3)))
     tl.store(out + index, _uniform_f32(raw), mask=mask)
+
+
+@triton.jit
+def _uniform_f64_aligned_kernel(out, seed, base_counter, n_counters, BLOCK: tl.constexpr):
+    counter_offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = counter_offset < n_counters
+    w0, w1, w2, w3 = _logical_words(seed, base_counter + counter_offset)
+    base = counter_offset * 2
+    tl.store(out + base + 0, _uniform_f64(w0, w1), mask=mask)
+    tl.store(out + base + 1, _uniform_f64(w2, w3), mask=mask)
+
+
+@triton.jit
+def _uniform_f64_generic_kernel(
+    out,
+    seed,
+    base_counter,
+    n,
+    n_groups,
+    SHIFT: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    group = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = group < n_groups
+    w0, w1, w2, w3 = _logical_window4(seed, base_counter + group, SHIFT)
+    base = group * 2
+    tl.store(out + base + 0, _uniform_f64(w0, w1), mask=mask & (base + 0 < n))
+    tl.store(out + base + 1, _uniform_f64(w2, w3), mask=mask & (base + 1 < n))
 
 
 @triton.jit
@@ -161,6 +248,14 @@ _UNIFORM_GENERIC_LAUNCHER = CachedKernelLauncher(
     _uniform_generic_kernel,
     constexpr_names=("BLOCK",),
 )
+_UNIFORM_F64_ALIGNED_LAUNCHER = CachedKernelLauncher(
+    _uniform_f64_aligned_kernel,
+    constexpr_names=("BLOCK",),
+)
+_UNIFORM_F64_GENERIC_LAUNCHER = CachedKernelLauncher(
+    _uniform_f64_generic_kernel,
+    constexpr_names=("SHIFT", "BLOCK"),
+)
 _NORMAL_ALIGNED_LAUNCHER = CachedKernelLauncher(
     _normal_aligned_kernel,
     constexpr_names=("LOGNORMAL", "BLOCK"),
@@ -216,6 +311,35 @@ def generate_corex_uniform_f32(
             (num_warps,),
         )
     generator.offset = offset + n
+
+
+def generate_corex_uniform_f64(
+    out: torch.Tensor,
+    generator: PhiloxGenerator,
+    *,
+    block_size: int,
+    num_warps: int,
+) -> None:
+    n = out.numel()
+    seed = int(generator.seed)
+    offset = int(generator.offset)
+    if offset % 4 == 0 and n % 2 == 0:
+        n_counters = n // 2
+        _UNIFORM_F64_ALIGNED_LAUNCHER.launch(
+            triton.cdiv(n_counters, block_size),
+            (out, seed, offset // 4, n_counters),
+            (block_size,),
+            (num_warps,),
+        )
+    else:
+        n_groups = triton.cdiv(n, 2)
+        _UNIFORM_F64_GENERIC_LAUNCHER.launch(
+            triton.cdiv(n_groups, block_size),
+            (out, seed, offset // 4, n, n_groups),
+            (offset % 4, block_size),
+            (num_warps,),
+        )
+    generator.offset = offset + 2 * n
 
 
 def generate_corex_normal_f32(

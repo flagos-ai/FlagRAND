@@ -7,6 +7,7 @@ import torch
 
 from flagrand import curand
 from flagrand.fused._internal.philox_direct import generate_philox_lognormal_f32, generate_philox_normal_f32
+from flagrand.runtime import current_backend
 
 pytestmark = [
     pytest.mark.accuracy,
@@ -108,11 +109,35 @@ def test_uniform_f32_and_f64_statistics_and_endpoints() -> None:
     curand.generate_uniform_double(curand.create_generator(seed=43), uniform64)
     torch.cuda.synchronize()
 
-    for values in (uniform32, uniform64):
+    for device_values in (uniform32, uniform64):
+        values = device_values.cpu()
         assert bool(torch.isfinite(values).all())
         assert 0.0 < float(values.min()) <= float(values.max()) <= 1.0
         assert abs(float(values.mean()) - 0.5) < 0.004
         assert abs(float(values.var()) - (1.0 / 12.0)) < 0.002
+
+
+@pytest.mark.uniform_f64
+@pytest.mark.parametrize("offset", range(8))
+def test_corex_uniform_f64_matches_exact_philox_pair_reference(offset: int) -> None:
+    if current_backend() != "corex":
+        pytest.skip("CoreX-specific IEEE-754 construction test")
+
+    n = 4097
+    raw = torch.empty(2 * n, device="cuda", dtype=torch.int32)
+    actual = torch.empty(n, device="cuda", dtype=torch.float64)
+    curand.generate(curand.create_generator(seed=73, offset=offset), raw)
+    curand.generate_uniform_double(curand.create_generator(seed=73, offset=offset), actual)
+
+    words = raw.cpu().tolist()
+    scale = float(1 << 53)
+    expected = []
+    for raw0, raw1 in zip(words[0::2], words[1::2], strict=True):
+        hi = (raw0 & 0xFFFFFFFF) >> 5
+        lo = (raw1 & 0xFFFFFFFF) >> 6
+        expected.append(((1 << 53) - ((hi << 26) | lo)) / scale)
+
+    assert actual.cpu().tolist() == expected
 
 
 @pytest.mark.parametrize(

@@ -17,5 +17,6 @@ ppu_logs/
 ppu_results/
 ascend_910c_logs/
 ascend_910c_results/
+corex_results/
 *.prof
 *.tar.gz
