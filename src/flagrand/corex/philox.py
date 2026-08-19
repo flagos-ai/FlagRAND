@@ -393,6 +393,8 @@ def _generate_corex_normal_like_f32(
     lognormal: bool,
 ) -> None:
     n = out.numel()
+    if n % 2 != 0:
+        raise ValueError(f"CoreX Philox Box-Muller path requires an even element count, got {n}.")
     seed = int(generator.seed)
     offset = int(generator.offset)
     if offset % 4 == 0 and n % 4 == 0:
