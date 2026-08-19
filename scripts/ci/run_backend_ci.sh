@@ -61,72 +61,33 @@ PY
 
 "$PYTHON_BIN" -m compileall -q src benchmark tests tools
 "$PYTHON_BIN" tools/validate_operator_registry.py | tee "$LOG_DIR/operator_registry.log"
-
-if [[ -n "$OPERATOR" ]]; then
-    run_capture "$LOG_DIR/pytest-$OPERATOR.log" \
-        "$PYTHON_BIN" -m pytest -q tests/accuracy -m "$OPERATOR"
-    case "$BACKEND" in
-        ascend-cann900)
-            run_capture "$LOG_DIR/benchmark-$OPERATOR.log" \
-                "$PYTHON_BIN" -m benchmark.run_ascend_910c \
-                --device "${FLAGRAND_DEVICE:-0}" \
-                --profile smoke \
-                --distributions "$OPERATOR" \
-                --allow-unverified-910c \
-                --results-dir "$PROJECT_DIR/ascend_910c_results/ondemand_$RUN_ID"
-            ;;
-        iluvatar)
-            run_capture "$LOG_DIR/benchmark-$OPERATOR.log" \
-                "$PYTHON_BIN" -m benchmark.run_corex \
-                --profile smoke \
-                --distributions "$OPERATOR" \
-                --results-dir "$PROJECT_DIR/corex_results/ondemand_$RUN_ID"
-            ;;
-        thead)
-            run_capture "$LOG_DIR/benchmark-$OPERATOR.log" \
-                "$PYTHON_BIN" -m benchmark.run_ppu \
-                --profile smoke \
-                --distributions "$OPERATOR" \
-                --skip-torch-reference \
-                --results-dir "$PROJECT_DIR/ppu_results/ondemand_$RUN_ID"
-            ;;
-    esac
-    exit 0
-fi
+"$PYTHON_BIN" -m pytest -q tests/accuracy/test_unified_runner.py | tee "$LOG_DIR/unified-runner-tests.log"
 
 case "$BACKEND" in
     ascend-cann900)
-        run_capture "$LOG_DIR/pytest.log" \
-            "$PYTHON_BIN" -m pytest -q tests/accuracy
-        ASCEND_PROFILE="$PROFILE"
-        ASCEND_PROFILE_ARGS=()
-        if [[ "$ASCEND_PROFILE" == "acceptance" ]]; then
-            ASCEND_PROFILE=full
-            ASCEND_PROFILE_ARGS+=(--acceptance-profile)
-        fi
-        run_capture "$LOG_DIR/benchmark.log" \
-            "$PYTHON_BIN" -m benchmark.run_ascend_910c \
-            --device "${FLAGRAND_DEVICE:-0}" \
-            --profile "$ASCEND_PROFILE" \
-            --allow-unverified-910c \
-            "${ASCEND_PROFILE_ARGS[@]}" \
-            --results-dir "$PROJECT_DIR/ascend_910c_results/ci_$RUN_ID"
+        RESULTS_DIR="$PROJECT_DIR/ascend_910c_results/ci_$RUN_ID"
         ;;
     iluvatar)
-        run_capture "$LOG_DIR/pytest.log" \
-            "$PYTHON_BIN" -m pytest -q tests/accuracy \
-            -m "not ascend_910c and not normal_f64 and not lognormal_f64"
-        COREX_PROFILE="$PROFILE"
-        if [[ "$COREX_PROFILE" == "acceptance" ]]; then
-            COREX_PROFILE=matrix
-        fi
-        run_capture "$LOG_DIR/benchmark.log" \
-            "$PYTHON_BIN" -m benchmark.run_corex \
-            --profile "$COREX_PROFILE" \
-            --results-dir "$PROJECT_DIR/corex_results/ci_$RUN_ID"
+        RESULTS_DIR="$PROJECT_DIR/corex_results/ci_$RUN_ID"
         ;;
     thead)
-        export FLAGRAND_PERF_PROFILE="$PROFILE"
-        run_capture "$LOG_DIR/hardware-ci.log" bash scripts/ci/run_ppu_ci.sh
+        RESULTS_DIR="$PROJECT_DIR/ppu_results/ci_$RUN_ID"
         ;;
 esac
+
+export FLAGRAND_PLATFORM="$BACKEND"
+export FLAGRAND_PERF_PROFILE="$PROFILE"
+
+RUNNER_ARGS=(
+    --gpus 0
+    --output-dir "$RESULTS_DIR"
+    --dump-output
+)
+if [[ -n "$OPERATOR" ]]; then
+    RUNNER_ARGS+=(--ops "$OPERATOR")
+else
+    RUNNER_ARGS+=(--stages stable)
+fi
+
+run_capture "$LOG_DIR/unified-runner.log" \
+    "$PYTHON_BIN" tools/run_tests.py "${RUNNER_ARGS[@]}"
