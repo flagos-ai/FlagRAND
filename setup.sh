@@ -66,4 +66,20 @@ if [[ -n "$POST_PACKAGES" ]]; then
         --index-strategy unsafe-best-match
 fi
 uv pip install -e . --no-deps --no-build-isolation
+
+if [[ "${ENABLE_CPP:-0}" == "1" ]]; then
+    if [[ "$BACKEND" != "iluvatar" ]]; then
+        echo "FlagRAND C++ wrapper prototype currently supports only the Iluvatar backend." >&2
+        exit 2
+    fi
+    uv pip install -q \
+        "cmake>=3.25,<4" \
+        "ninja>=1.11" \
+        "pybind11==3.0.3" \
+        "scikit-build-core==0.12.2" \
+        --index "$MIRROR"
+    CMAKE_ARGS="-DFLAGRAND_BUILD_CPP_WRAPPER=ON -DFLAGRAND_CPP_BACKEND=IX -DCMAKE_BUILD_TYPE=Release" \
+        uv pip install ./cpp --no-build-isolation -v
+fi
+
 python tools/validate_operator_registry.py

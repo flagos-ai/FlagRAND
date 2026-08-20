@@ -1,0 +1,35 @@
+name: C++ Wrapper Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  iluvatar-cpp-wrapper:
+    runs-on: iluvatar
+    timeout-minutes: 90
+    concurrency:
+      group: flagrand-iluvatar-cpp-wrapper-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build FlagRAND C++ wrapper
+        shell: bash
+        env:
+          ENABLE_CPP: "1"
+        run: ./setup.sh iluvatar
+
+      - name: Check accelerator availability
+        shell: bash
+        run: |
+          source scripts/ci/backend_env.sh iluvatar
+          bash tools/gpu_check_iluvatar.sh
+
+      - name: Run C++ wrapper acceptance
+        shell: bash
+        run: |
+          source scripts/ci/backend_env.sh iluvatar
+          .venv/bin/python cpp/tests/test_wrapper.py

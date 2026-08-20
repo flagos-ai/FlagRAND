@@ -1,0 +1,19 @@
+[build-system]
+requires = ["scikit-build-core==0.12.2", "pybind11==3.0.3"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "flagrand-cpp-ix"
+version = "0.1.0"
+description = "FlagRAND C++ wrapped Philox Host API for Iluvatar CoreX."
+requires-python = ">=3.10"
+
+[tool.scikit-build]
+build.verbose = true
+logging.level = "INFO"
+wheel.install-dir = "flagrand"
+build-dir = "build/{cache_tag}"
+
+[tool.scikit-build.cmake.define]
+FLAGRAND_BUILD_CPP_WRAPPER = "ON"
+FLAGRAND_CPP_BACKEND = "IX"
