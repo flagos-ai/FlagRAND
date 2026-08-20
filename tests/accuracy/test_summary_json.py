@@ -190,11 +190,7 @@ def _record(backend: str, distribution: str, dtype: str, n: int, total_ms: float
 
 
 def _api_result(dtype: str, performance_status: str) -> dict[str, object]:
-    details = (
-        {"(4096,)": {"base": 0.1, "gems": 0.05, "speedup": 2.0}}
-        if performance_status == "Passed"
-        else {}
-    )
+    details = {"(4096,)": {"base": 0.1, "gems": 0.05, "speedup": 2.0}} if performance_status == "Passed" else {}
     return {
         "customized": True,
         "accuracy": {
