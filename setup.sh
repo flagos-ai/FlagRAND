@@ -65,7 +65,11 @@ if [[ -n "$POST_PACKAGES" ]]; then
         --index "$MIRROR" \
         --index-strategy unsafe-best-match
 fi
-uv pip install -e . --no-deps --no-build-isolation
+if [[ "${ENABLE_CPP:-0}" == "1" ]]; then
+    uv pip install . --no-deps --no-build-isolation
+else
+    uv pip install -e . --no-deps --no-build-isolation
+fi
 
 if [[ "${ENABLE_CPP:-0}" == "1" ]]; then
     if [[ "$BACKEND" != "iluvatar" ]]; then

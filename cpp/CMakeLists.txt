@@ -61,6 +61,6 @@ pybind11_add_module(c_operators csrc/bindings.cpp)
 target_compile_definitions(c_operators PRIVATE BACKEND_${FLAGRAND_CPP_BACKEND})
 target_link_libraries(c_operators PUBLIC Torch::Torch_Python PRIVATE flagrand_operators)
 
-install(TARGETS flagrand_operators c_operators LIBRARY DESTINATION ".")
+install(TARGETS triton_jit flagrand_operators c_operators LIBRARY DESTINATION ".")
 install(DIRECTORY triton_src/ DESTINATION "triton_src")
 install(DIRECTORY include/flagrand DESTINATION "include")
