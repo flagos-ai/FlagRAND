@@ -24,6 +24,7 @@ if str(ROOT) not in sys.path:
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
+from benchmark.summary_json import aggregate_delivery_results  # noqa: E402
 from tools.operator_registry import load_registry  # noqa: E402
 
 TIMEOUT = -100
@@ -705,7 +706,7 @@ def main(argv: list[str] | None = None) -> int:
         "timestamp": ended_at.strftime("%Y-%m-%d %H:%M:%S"),
         "total_duration": str(duration).split(".", 1)[0],
         "env": env_info,
-        "result": result,
+        "result": aggregate_delivery_results(result),
     }
     summary_path = config.output_dir / "summary.json"
     summary_path.write_text(json.dumps(final_data, indent=2, ensure_ascii=False), encoding="utf-8")

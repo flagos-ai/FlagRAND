@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from benchmark.summary_json import build_summary
 
+DELIVERY_NAMES = ["PHILOX4_32_10", "RAW_BITS", "UNIFORM", "NORMAL", "LOGNORMAL"]
+
 ENVIRONMENT = {
     "architecture": "x86_64",
     "os_name": "ubuntu",
@@ -34,7 +36,8 @@ def test_summary_matches_flagos_schema_and_latency_semantics() -> None:
     assert set(summary) == {"timestamp", "env", "result"}
     assert summary["timestamp"] == "2026-08-18 12:34:56"
     assert summary["env"] == ENVIRONMENT
-    operator = summary["result"]["uniform_f32"]
+    assert list(summary["result"]) == DELIVERY_NAMES
+    operator = summary["result"]["UNIFORM"]
     assert set(operator) == {"customized", "accuracy", "performance"}
     assert operator["accuracy"] == {
         "total": 1,
@@ -53,7 +56,7 @@ def test_summary_matches_flagos_schema_and_latency_semantics() -> None:
                 "speedup": 0.25,
             }
         },
-        "test_case": "uniform_f32",
+        "test_case": "UNIFORM",
     }
 
 
@@ -76,10 +79,10 @@ def test_summary_marks_unsupported_baseline_without_fake_measurements() -> None:
         environment=ENVIRONMENT,
     )
 
-    operator = summary["result"]["uniform_f64"]
+    operator = summary["result"]["UNIFORM"]
     assert operator["accuracy"]["status"] == "Passed"
     assert operator["performance"]["status"] == "Skipped"
-    assert operator["performance"]["data"] == {"torch.float64": {"result": "Unknown", "details": {}, "speedup": 0}}
+    assert operator["performance"]["data"] == {"fp64": {"result": "Unknown", "details": {}, "speedup": 0}}
     assert "CURAND_STATUS_DOUBLE_PRECISION_REQUIRED" in operator["performance"]["reason"]
 
 
@@ -97,7 +100,7 @@ def test_summary_groups_accuracy_failures_by_reason() -> None:
         environment=ENVIRONMENT,
     )
 
-    accuracy = summary["result"]["normal_f32"]["accuracy"]
+    accuracy = summary["result"]["NORMAL"]["accuracy"]
     assert accuracy["status"] == "Failed"
     assert accuracy["failed"] == 1
     assert accuracy["details"] == {"failed": {"failed checks: mean,std": ["normal_f32:(8192,)"]}}
@@ -121,13 +124,40 @@ def test_summary_selects_the_platform_acceptance_baseline() -> None:
             environment=ENVIRONMENT,
         )
 
-        performance = summary["result"]["raw32"]["performance"]
-        assert performance["status"] == "Passed"
-        assert performance["data"]["int32"]["details"]["(1024,)"] == {
-            "base": 0.5,
-            "gems": 0.25,
-            "speedup": 2.0,
-        }
+        for delivery_name in ("PHILOX4_32_10", "RAW_BITS"):
+            performance = summary["result"][delivery_name]["performance"]
+            assert performance["status"] == "Passed"
+            assert performance["data"]["int32"]["details"]["(1024,)"] == {
+                "base": 0.5,
+                "gems": 0.25,
+                "speedup": 2.0,
+            }
+
+
+def test_summary_aggregates_distribution_dtypes_under_delivery_name() -> None:
+    records = [
+        _record("flagrand_public", "uniform_f32", "float32", 4096, 0.20),
+        _record("corex_curand", "uniform_f32", "float32", 4096, 0.10),
+        _record("flagrand_public", "uniform_f64", "float64", 65536, 0.40),
+        _record("corex_curand", "uniform_f64", "float64", 65536, 0.20),
+    ]
+    summary = build_summary(
+        {
+            "platform": "iluvatar_bi_v150_corex",
+            "distributions": ("uniform_f32", "uniform_f64"),
+        },
+        records,
+        timestamp="2026-08-18 12:34:56",
+        environment=ENVIRONMENT,
+    )
+
+    uniform = summary["result"]["UNIFORM"]
+    assert uniform["accuracy"]["total"] == 2
+    assert uniform["accuracy"]["passed"] == 2
+    assert uniform["performance"]["status"] == "Passed"
+    assert set(uniform["performance"]["data"]) == {"fp32", "fp64"}
+    assert uniform["performance"]["data"]["fp32"]["speedup"] == 0.5
+    assert uniform["performance"]["data"]["fp64"]["speedup"] == 0.5
 
 
 def _record(backend: str, distribution: str, dtype: str, n: int, total_ms: float) -> dict[str, object]:

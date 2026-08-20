@@ -12,6 +12,7 @@ from typing import Any
 DTYPE_MAP = {
     "float16": "fp16",
     "float32": "fp32",
+    "float64": "fp64",
     "bfloat16": "bf16",
     "int16": "int16",
     "int32": "int32",
@@ -23,6 +24,14 @@ DTYPE_MAP = {
     "float8_e4m3fn": "float8_e4m3fn",
     "float8_e5m2": "float8_e5m2",
 }
+
+DELIVERY_OPERATORS = (
+    ("PHILOX4_32_10", ("raw32",)),
+    ("RAW_BITS", ("raw32",)),
+    ("UNIFORM", ("uniform_f32", "uniform_f64")),
+    ("NORMAL", ("normal_f32", "normal_f64")),
+    ("LOGNORMAL", ("lognormal_f32", "lognormal_f64")),
+)
 
 
 def write_summary_json(
@@ -47,7 +56,7 @@ def build_summary(
     flagrand_records = [record for record in records if record.get("backend") == "flagrand_public"]
     distributions = _distribution_order(manifest, flagrand_records)
     baseline = _baseline_backend(manifest)
-    result = {
+    api_results = {
         distribution: {
             "customized": True,
             "accuracy": _accuracy_result(
@@ -60,8 +69,100 @@ def build_summary(
     return {
         "timestamp": timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "env": environment or collect_environment(manifest),
-        "result": result,
+        "result": aggregate_delivery_results(api_results),
     }
+
+
+def aggregate_delivery_results(api_results: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {
+        delivery_name: _aggregate_operator_result(
+            delivery_name,
+            [(api_name, api_results[api_name]) for api_name in api_names if api_name in api_results],
+        )
+        for delivery_name, api_names in DELIVERY_OPERATORS
+    }
+
+
+def _aggregate_operator_result(
+    delivery_name: str,
+    api_results: list[tuple[str, dict[str, Any]]],
+) -> dict[str, Any]:
+    return {
+        "customized": True,
+        "accuracy": _aggregate_accuracy([result["accuracy"] for _, result in api_results]),
+        "performance": _aggregate_performance(delivery_name, api_results),
+    }
+
+
+def _aggregate_accuracy(results: list[dict[str, Any]]) -> dict[str, Any]:
+    passed = sum(int(result.get("passed", 0)) for result in results)
+    skipped = sum(int(result.get("skipped", 0)) for result in results)
+    failed = sum(int(result.get("failed", 0)) for result in results)
+    details: dict[str, dict[str, list[str]]] = {}
+    for result in results:
+        for category, reasons in result.get("details", {}).items():
+            target = details.setdefault(str(category), {})
+            for reason, cases in reasons.items():
+                target.setdefault(str(reason), []).extend(str(case) for case in cases)
+
+    statuses = {str(result.get("status", "NotFound")) for result in results}
+    if failed or statuses & {"Failed", "Error", "Timeout"}:
+        status = "Failed"
+    elif passed:
+        status = "Passed"
+    elif skipped:
+        status = "Skipped"
+    else:
+        status = "NotFound"
+    return {
+        "total": sum(int(result.get("total", 0)) for result in results),
+        "skipped": skipped,
+        "failed": failed,
+        "passed": passed,
+        "details": details,
+        "status": status,
+    }
+
+
+def _aggregate_performance(
+    delivery_name: str,
+    api_results: list[tuple[str, dict[str, Any]]],
+) -> dict[str, Any]:
+    data: dict[str, dict[str, Any]] = {}
+    statuses: list[str] = []
+    reasons: list[str] = []
+    for api_name, operator_result in api_results:
+        performance = operator_result["performance"]
+        status = str(performance.get("status", "NotFound"))
+        statuses.append(status)
+        if status != "Passed" and performance.get("reason"):
+            reasons.append(f"{api_name}: {performance['reason']}")
+        for dtype, dtype_result in performance.get("data", {}).items():
+            target = data.setdefault(str(dtype), {"result": "Unknown", "details": {}, "speedup": 0.0})
+            target["details"].update(dtype_result.get("details", {}))
+
+    for dtype_result in data.values():
+        details = dtype_result["details"]
+        if details:
+            dtype_result["result"] = "OK"
+            dtype_result["speedup"] = sum(float(item["speedup"]) for item in details.values()) / len(details)
+
+    if any(status in {"Failed", "Error", "Timeout"} for status in statuses):
+        status = "Failed"
+    elif "Passed" in statuses:
+        status = "Passed"
+    elif "Skipped" in statuses:
+        status = "Skipped"
+    else:
+        status = "NotFound"
+    result: dict[str, Any] = {
+        "status": status,
+        "data": data,
+        "test_case": delivery_name,
+    }
+    if status != "Passed" and reasons:
+        result["reason"] = "; ".join(reasons)
+    return result
 
 
 def collect_environment(manifest: dict[str, Any]) -> dict[str, Any]:
