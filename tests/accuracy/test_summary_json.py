@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from benchmark.summary_json import build_summary
+from benchmark.summary_json import aggregate_delivery_results, build_summary
 
 DELIVERY_NAMES = ["PHILOX4_32_10", "RAW_BITS", "UNIFORM", "NORMAL", "LOGNORMAL"]
 
@@ -160,6 +160,23 @@ def test_summary_aggregates_distribution_dtypes_under_delivery_name() -> None:
     assert uniform["performance"]["data"]["fp64"]["speedup"] == 0.5
 
 
+def test_delivery_aggregation_keeps_dtype_without_native_baseline() -> None:
+    api_results = {
+        "uniform_f32": _api_result("fp32", "Passed"),
+        "uniform_f64": _api_result("fp64", "Skipped"),
+    }
+
+    uniform = aggregate_delivery_results(api_results)["UNIFORM"]
+
+    assert uniform["performance"]["status"] == "Passed"
+    assert set(uniform["performance"]["data"]) == {"fp32", "fp64"}
+    assert uniform["performance"]["data"]["fp64"] == {
+        "result": "Unknown",
+        "details": {},
+        "speedup": 0.0,
+    }
+
+
 def _record(backend: str, distribution: str, dtype: str, n: int, total_ms: float) -> dict[str, object]:
     return {
         "backend": backend,
@@ -169,4 +186,35 @@ def _record(backend: str, distribution: str, dtype: str, n: int, total_ms: float
         "status": "pass",
         "total_ms_median": total_ms,
         "validation": {"status": "pass", "checks": {"finite": True}},
+    }
+
+
+def _api_result(dtype: str, performance_status: str) -> dict[str, object]:
+    details = (
+        {"(4096,)": {"base": 0.1, "gems": 0.05, "speedup": 2.0}}
+        if performance_status == "Passed"
+        else {}
+    )
+    return {
+        "customized": True,
+        "accuracy": {
+            "total": 1,
+            "skipped": 0,
+            "failed": 0,
+            "passed": 1,
+            "details": {},
+            "status": "Passed",
+        },
+        "performance": {
+            "status": performance_status,
+            "data": {
+                dtype: {
+                    "result": "OK" if details else "Unknown",
+                    "details": details,
+                    "speedup": 2.0 if details else 0.0,
+                }
+            },
+            "test_case": dtype,
+            **({"reason": "native baseline unsupported"} if performance_status == "Skipped" else {}),
+        },
     }

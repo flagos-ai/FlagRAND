@@ -426,6 +426,8 @@ def normalise_performance(operator_id: str, records: list[dict[str, Any]]) -> di
         "baseline",
     )
     for record in flagrand_records:
+        dtype = str(record.get("dtype", "unknown"))
+        dtype_details = details_by_dtype.setdefault(dtype, [])
         if record.get("status") != "pass":
             failed.append(record.get("error") or record.get("validation") or record.get("status"))
             continue
@@ -461,8 +463,7 @@ def normalise_performance(operator_id: str, records: list[dict[str, Any]]) -> di
                 continue
             speedup = float(baseline["total_ms_median"]) / latency
         base_latency = latency * speedup
-        dtype = str(record.get("dtype", "unknown"))
-        details_by_dtype.setdefault(dtype, []).append(
+        dtype_details.append(
             {
                 "shape_detail": f"({int(record['n'])},)",
                 "latency_base": base_latency,
@@ -498,12 +499,6 @@ def parse_performance_data(operator_id: str, result_file: Path) -> dict[str, Any
     raw_data = json.loads(result_file.read_text(encoding="utf-8"))
     operator_data = raw_data[operator_id]
     result = str(operator_data.get("result", "NotFound"))
-    if result in {"failed", "skipped"}:
-        return {
-            "status": result.title(),
-            "reason": operator_data.get("reason", "Unknown"),
-            "test_case": operator_data.get("test_case", "Unknown"),
-        }
     benchmark_data: dict[str, Any] = {}
     for item in operator_data.get("details", []):
         dtype = DTYPE_MAP.get(str(item["dtype"]), str(item["dtype"]))

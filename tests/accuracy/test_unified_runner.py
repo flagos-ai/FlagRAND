@@ -119,3 +119,4 @@ def test_missing_native_baseline_is_reported_as_skipped(tmp_path) -> None:
 
     assert result["status"] == "Skipped"
     assert result["reason"] == "corex_curand: CURAND_STATUS_DOUBLE_PRECISION_REQUIRED (1 shapes)"
+    assert result["data"] == {"fp64": {"result": "Unknown", "details": {}, "speedup": 0.0}}
