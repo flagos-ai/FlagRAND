@@ -37,7 +37,9 @@ set(TRITON_JIT_INSTALL OFF CACHE BOOL "Do not install libtriton_jit separately" 
 set(TRITON_JIT_BUILD_EXAMPLES OFF CACHE BOOL "Do not build libtriton_jit examples" FORCE)
 FetchContent_Declare(
   TritonJIT
-  URL https://resource.flagos.net/repository/flagos-filestore/libtriton_jit/libtriton_jit-0.2.0-rc0.1.tar.gz
+  GIT_REPOSITORY https://github.com/flagos-ai/libtriton_jit.git
+  GIT_TAG v0.2.0-rc0.1
+  GIT_SHALLOW TRUE
   PATCH_COMMAND
     ${CMAKE_COMMAND} -DSOURCE_DIR=<SOURCE_DIR> -P
     ${CMAKE_CURRENT_LIST_DIR}/cmake/PatchTritonJITIX.cmake)
