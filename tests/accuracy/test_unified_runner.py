@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 
 from tools.run_tests import (
+    RunnerConfig,
+    _performance_command,
     get_ops_from_inventory,
     get_ops_to_test,
     normalise_performance,
@@ -10,6 +12,28 @@ from tools.run_tests import (
     parse_performance_data,
     supported_operator_ids,
 )
+
+
+def test_acceptance_profile_is_translated_for_each_backend(tmp_path) -> None:
+    cases = {
+        "thead": ("full", {"--skip-torch-reference", "--acceptance-profile"}),
+        "ascend-cann900": ("full", {"--acceptance-profile"}),
+        "iluvatar": ("matrix", set()),
+    }
+
+    for platform, (expected_profile, expected_flags) in cases.items():
+        config = RunnerConfig(
+            output_dir=tmp_path,
+            platform=platform,
+            profile="acceptance",
+            dump_output=False,
+            timeout=60,
+        )
+        command = _performance_command(0, "uniform_f32", tmp_path / platform, config)
+
+        profile_index = command.index("--profile")
+        assert command[profile_index + 1] == expected_profile
+        assert expected_flags.issubset(command)
 
 
 def test_registry_uses_flaggems_maturity_stages() -> None:

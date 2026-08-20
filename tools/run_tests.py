@@ -377,16 +377,17 @@ def _performance_command(
 ) -> list[str]:
     module = os.environ.get("FLAGRAND_PERF_MODULE", PERFORMANCE_MODULES[config.platform])
     profile = config.profile
+    benchmark_profile = (
+        "matrix"
+        if config.platform == "iluvatar" and profile == "acceptance"
+        else ("full" if profile == "acceptance" else profile)
+    )
     command = [
         sys.executable,
         "-m",
         module,
         "--profile",
-        (
-            "full"
-            if config.platform == "ascend-cann900" and profile == "acceptance"
-            else ("matrix" if config.platform == "iluvatar" and profile == "acceptance" else profile)
-        ),
+        benchmark_profile,
         "--distributions",
         operator_id,
         "--results-dir",
@@ -398,6 +399,8 @@ def _performance_command(
             command.append("--acceptance-profile")
     elif config.platform == "thead":
         command.append("--skip-torch-reference")
+        if profile == "acceptance":
+            command.append("--acceptance-profile")
     return command
 
 
