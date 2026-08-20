@@ -1,3 +1,7 @@
+from pkgutil import extend_path
+
+__path__ = extend_path(__path__, __name__)
+
 from flagrand import curand
 from flagrand._curand_handle import (
     CURAND_RNG_PSEUDO_PHILOX4_32_10,
