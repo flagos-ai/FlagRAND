@@ -12,6 +12,7 @@ case "$BACKEND" in
         ;;
     iluvatar)
         export COREX_HOME=/usr/local/corex
+        export CUDA_HOME="$COREX_HOME"
         export PATH="$COREX_HOME/bin:$PATH"
         export LD_LIBRARY_PATH="$COREX_HOME/lib:$COREX_HOME/lib64:${LD_LIBRARY_PATH:-}"
         export LIBRARY_PATH="$COREX_HOME/lib:$COREX_HOME/lib64:${LIBRARY_PATH:-}"
