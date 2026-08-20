@@ -73,7 +73,7 @@ if [[ "${ENABLE_CPP:-0}" == "1" ]]; then
         exit 2
     fi
     uv pip install -q \
-        "cmake==3.25.3" \
+        "cmake==3.25.2" \
         "ninja>=1.11" \
         "pybind11==3.0.3" \
         "scikit-build-core==0.12.2" \
