@@ -5,6 +5,8 @@
 统一 CI 后端名称为 `iluvatar`。当前依赖由 `conf/backends.yaml` 固定为 Python 3.10、
 `torch==2.7.1+corex.4.4.0`、`triton==3.1.0+corex.4.4.0` 和 CoreX 4.4；
 运行前通过 `tools/gpu_check_iluvatar.sh` 验证 BI-V150 设备、Torch 和 Triton target。
+`setup.sh iluvatar` 使用 `/usr/local/bin/python3` 创建带 `--system-site-packages` 的
+项目虚拟环境，复用卡上预装的 CoreX Torch/Triton，不重新下载或替换厂商运行时。
 
 ## 完整验收
 

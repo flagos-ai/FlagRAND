@@ -38,6 +38,9 @@ FlagGems-compatible `summary.json`, and exposes exactly five delivery results:
 
 ### Iluvatar BI-V150 / CoreX 4.4
 
+The BI-V150 setup reuses the CoreX Python, Torch, and Triton already installed
+under `/usr/local`; it does not download or replace the vendor runtime.
+
 ```bash
 ./setup.sh iluvatar
 source scripts/ci/backend_env.sh iluvatar
