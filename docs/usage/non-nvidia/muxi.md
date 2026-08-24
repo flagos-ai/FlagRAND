@@ -1,6 +1,6 @@
 # FlagRAND Philox 沐曦运行指南
 
-PPU-ZW810E 请看 `docs/platforms/ppu.md`，使用 `benchmark.run_ppu` 和 `benchmark/ppu_matrix/`。
+PPU-ZW810E 请看 [PPU 运行指南](ppu.md)，使用 `benchmark.run_ppu` 和 `benchmark/ppu_matrix/`。
 本文件保留给沐曦/MACA 路径，入口是 `benchmark.run_muxi`。
 
 本次测试对象固定为：
@@ -30,7 +30,7 @@ FlagRAND/
 ├── tests/
 ├── benchmark/muxi_matrix/
 ├── benchmark/run_muxi.py
-├── docs/platforms/muxi.md
+├── docs/usage/non-nvidia/muxi.md
 └── pyproject.toml
 ```
 
@@ -213,5 +213,6 @@ muxi_results/<timestamp>_<profile>_philox/
 把结果带回本机时只需压缩该次目录：
 
 ```bash
-tar -czf muxi_philox_results.tar.gz muxi_results/<本次目录名>
+RESULT_DIR="$(find muxi_results -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
+tar -czf muxi_philox_results.tar.gz "$RESULT_DIR"
 ```

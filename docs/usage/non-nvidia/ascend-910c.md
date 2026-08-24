@@ -5,33 +5,8 @@
 当前统一 CI 后端名称为 `ascend-cann900`，使用 CANN 9.0.0、Python 3.11、
 `torch==2.10.0+cpu`、`torch-npu==2.10.0`、`triton==3.5.0` 和
 `triton_ascend==3.2.1`。实际运行时以 `environment.log` 中的 Torch、Triton 和
-`GPUTarget(backend='npu', ...)` 为准。公开 Docker 从零构建路径仍保留其独立固定版本，
-详见[从零构建与一键验收](ascend_910c_environment.md)。
-
-统一 CI / 验收命令：
-
-```bash
-git clone --branch main --single-branch git@github.com:flagos-ai/FlagRAND.git
-cd FlagRAND
-
-./setup.sh ascend-cann900
-source scripts/ci/backend_env.sh ascend-cann900
-bash tools/gpu_check_ascend.sh
-
-RUN_ID="ascend_$(date +%Y%m%d_%H%M%S)"
-FLAGRAND_RUN_ID="$RUN_ID" \
-FLAGRAND_PERF_PROFILE=acceptance \
-bash scripts/ci/run_backend_ci.sh ascend-cann900
-
-.venv/bin/python -m json.tool "ascend_910c_results/ci_${RUN_ID}/summary.json"
-```
-
-公开环境的完整构建、运行和结果回收步骤见[从零构建与一键验收](ascend_910c_environment.md)。容器内直接使用交付源码路径：
-
-```bash
-export PYTHONPATH="$PWD/src:$PWD${PYTHONPATH:+:$PYTHONPATH}"
-python3 -c 'import flagrand; print(flagrand.__file__)'
-```
+`GPUTarget(backend='npu', ...)` 为准。源码获取、安装、设备检查和正式验收统一见
+[硬件验收流程](../../getting-started/hardware-acceptance.md)。
 
 ## 七个 API 的实现契约
 
@@ -57,21 +32,6 @@ launch 的端到端时间约为 `41.36 us`，而原 public API 会随 host 状�
 dtype、contiguous 和 launch option 校验后，直接调用 910C Normal cached launcher，避免重复 backend
 查找、通用 distribution 分派和 chunk 分派。普通调用只计算一次 seed、offset 和 epoch；跨 `2^32`
 counter epoch 时自动回退到完整 windowed 路径，replay、offset 与 bulk/split 语义不变。
-
-2026-08-11 的 910C 定向实测中，正确性为 `13 passed`；`normal_f32` 三轮 API speedup 分别为
-`1.175x`、`1.131x`、`1.130x`，`lognormal_f32` 为 `1.315x`。完整定位、实现与证据见
-[Normal FP32 host fast path 报告](../reports/ascend_910c_normal_host_fast_path_20260811.md)。
-
-## 一键正式回归
-
-从公开源构建镜像并执行正式回归：
-
-```bash
-bash docker/ascend910c/build.sh
-bash docker/ascend910c/run.sh
-```
-
-脚本依次完成环境核验、Python 静态编译、正确性预检、pytest、七个 API 的独立进程正式验收和结果打包。预检确认 CANN 9.0、910C/9382 证据、Triton `npu`/`ascend` backend、ACLNN RNG 符号、replay、流连续性、F64 精度契约以及 baseline replay。诊断开关 `--allow-non-cann9` 和 `--allow-unverified-910c` 会把结果标为非正式交付数据。
 
 ## 端到端性能
 
@@ -105,8 +65,6 @@ bash scripts/ci/run_ascend_910c_ci.sh
 正式指标为 `total_ms_median`，包含 Python public API、下发、设备执行和末尾同步。每个 repeat 前后同步，首次编译由 warmup 排除；`device_ms_median` 和 enqueue 只作诊断。每个 shape 的 speedup 为 `CANN total_ms_median / FlagRAND total_ms_median`，只在单 API 内聚合，不计算跨 API 平均值。
 
 结果保存在 `ascend_910c_results/<timestamp>_<profile>_910c_philox/`，包括 `manifest.json`、`records.jsonl`、`records.csv` 和 `summary.md`。正式回传必须保留整个目录，不要只保存终端输出。
-
-逐 API 前台验收及结果下载的完整命令见 [阶段四硬件回归手册](../delivery/phase4_hardware_regression.md)。JumpServer 网络不参与 NPU 计时，默认无需后台执行。
 
 ## 常见故障
 
