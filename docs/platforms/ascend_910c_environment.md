@@ -33,9 +33,9 @@
 
 ```bash
 git clone \
-    --branch wuyu/ppu-910c-integration \
+    --branch main \
     --single-branch \
-    https://github.com/flagos-ai/FlagRAND.git \
+    git@github.com:flagos-ai/FlagRAND.git \
     /home/flagrand_910c_acceptance
 
 cd /home/flagrand_910c_acceptance

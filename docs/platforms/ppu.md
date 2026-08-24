@@ -2,6 +2,29 @@
 
 PPU 路径保留标准 Philox4x32-10 位流和七个 public API，并同时对比 PPU 的 `libcurand.so` 兼容实现与原生 `libacrand.so`。正式性能 baseline 使用 `ppu_acrand`。
 
+## 当前统一 CI / 验收入口
+
+统一后端名称为 `thead`。当前 CI 依赖由 `conf/backends.yaml` 固定为 Python 3.12、
+`torch==2.9.0+ppu2.0.0.oe` 和 `triton==3.5.0+ppu2.0.0.oe`。
+
+```bash
+git clone --branch main --single-branch git@github.com:flagos-ai/FlagRAND.git
+cd FlagRAND
+
+./setup.sh thead
+source scripts/ci/backend_env.sh thead
+bash tools/gpu_check_thead.sh
+
+RUN_ID="ppu_$(date +%Y%m%d_%H%M%S)"
+FLAGRAND_RUN_ID="$RUN_ID" \
+FLAGRAND_PERF_PROFILE=acceptance \
+bash scripts/ci/run_backend_ci.sh thead
+
+.venv/bin/python -m json.tool "ppu_results/ci_${RUN_ID}/summary.json"
+```
+
+以下章节保留专用 PPU SDK 环境、底层矩阵与 LibTuner 的诊断方法。
+
 ## 环境准备
 
 使用节点已有的 PPU SDK、torch 和 Triton 环境，不要由 pip 替换硬件依赖。离线节点直接通过 `PYTHONPATH` 加载源码：

@@ -2,7 +2,29 @@
 
 ## 验证环境
 
-当前交付固定使用 CANN 9.0.0、Python 3.11.15、torch 2.9.0+cpu、torch_npu 2.9.0.post2，以及 FlagTree `0.6.0+triton3.5` release 的 Ascend backend；Triton target 为 `GPUTarget(backend='npu', arch='Ascend910_9382', warp_size=0)`。包元数据可能不显示 `triton-ascend`，不能因此误判 backend。
+当前统一 CI 后端名称为 `ascend-cann900`，使用 CANN 9.0.0、Python 3.11、
+`torch==2.10.0+cpu`、`torch-npu==2.10.0`、`triton==3.5.0` 和
+`triton_ascend==3.2.1`。实际运行时以 `environment.log` 中的 Torch、Triton 和
+`GPUTarget(backend='npu', ...)` 为准。公开 Docker 从零构建路径仍保留其独立固定版本，
+详见[从零构建与一键验收](ascend_910c_environment.md)。
+
+统一 CI / 验收命令：
+
+```bash
+git clone --branch main --single-branch git@github.com:flagos-ai/FlagRAND.git
+cd FlagRAND
+
+./setup.sh ascend-cann900
+source scripts/ci/backend_env.sh ascend-cann900
+bash tools/gpu_check_ascend.sh
+
+RUN_ID="ascend_$(date +%Y%m%d_%H%M%S)"
+FLAGRAND_RUN_ID="$RUN_ID" \
+FLAGRAND_PERF_PROFILE=acceptance \
+bash scripts/ci/run_backend_ci.sh ascend-cann900
+
+.venv/bin/python -m json.tool "ascend_910c_results/ci_${RUN_ID}/summary.json"
+```
 
 公开环境的完整构建、运行和结果回收步骤见[从零构建与一键验收](ascend_910c_environment.md)。容器内直接使用交付源码路径：
 

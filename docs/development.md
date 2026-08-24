@@ -14,9 +14,29 @@
 
 ## CI 分层
 
-- `.github/workflows/ci.yml`：普通 PR 上执行注册表、Black/isort/flake8、CPU 可执行测试和 wheel/sdist 构建。
-- `.github/workflows/hardware-ci.yml`：仅手动触发，调度带 `ppu` 或 `ascend-910c` label 的自托管 runner，执行设备正确性和端到端性能矩阵。
-- `scripts/ci/run_ppu_ci.sh` 与 `run_ascend_910c_ci.sh` 调用相应的一键交付脚本，直接通过 `PYTHONPATH` 加载源码，不触发离线节点的 PEP 517 构建隔离，也不替换厂商 torch、Triton 和运行时组合。910C acceptance 固定为逐 API 独立进程，不提供同进程性能门禁。
+- `.github/workflows/linter.yml`：执行代码风格检查。
+- `.github/workflows/build-check.yml`：构建并检查 wheel/sdist。
+- `.github/workflows/unittest.yaml`：根据 `.github/backends.json` 选择硬件后端，并调用可复用的 `.github/workflows/backend-test.yaml`。
+- 三个自托管 runner 标签分别为 `iluvatar`、`thead` 和 `cann9`，对应 `iluvatar`、`thead`、`ascend-cann900` 后端。
+- `scripts/ci/run_backend_ci.sh <backend>` 是统一硬件入口；它执行环境记录、注册表检查、统一 runner 测试、正确性与性能矩阵，并生成交付 `summary.json`。
+
+正式 acceptance 示例：
+
+```bash
+./setup.sh thead
+source scripts/ci/backend_env.sh thead
+FLAGRAND_RUN_ID="ppu_$(date +%Y%m%d_%H%M%S)" \
+FLAGRAND_PERF_PROFILE=acceptance \
+bash scripts/ci/run_backend_ci.sh thead
+```
+
+后端与结果目录的映射为：
+
+| 后端 | 结果目录 |
+|---|---|
+| `iluvatar` | `corex_results/ci_<RUN_ID>/summary.json` |
+| `thead` | `ppu_results/ci_<RUN_ID>/summary.json` |
+| `ascend-cann900` | `ascend_910c_results/ci_<RUN_ID>/summary.json` |
 
 本地提交前执行：
 
