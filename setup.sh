@@ -24,12 +24,8 @@ if ! command -v uv >/dev/null 2>&1; then
         | tar xz -C "$HOME/.local/bin"
 fi
 
-if [[ "$BACKEND" == "iluvatar" ]]; then
-    /usr/local/bin/python3 -m venv --clear --system-site-packages .venv
-else
-    uv python install "$PYTHON_VERSION" --python-preference only-managed -q
-    uv venv .venv --python "$PYTHON_VERSION" --python-preference only-managed -q
-fi
+uv python install "$PYTHON_VERSION" --python-preference only-managed -q
+uv venv .venv --python "$PYTHON_VERSION" --python-preference only-managed -q
 source .venv/bin/activate
 source scripts/ci/backend_env.sh "$BACKEND"
 
@@ -49,12 +45,10 @@ with open(os.environ["BACKENDS_YAML"], encoding="utf-8") as stream:
 print(" ".join(backend["deps"] + backend["triton"]))
 PY
 )
-if [[ "$BACKEND" != "iluvatar" ]]; then
-    uv pip install -q $PACKAGES \
-        --default-index "$FLAGOS_PYPI" \
-        --index "$MIRROR" \
-        --index-strategy unsafe-best-match
-fi
+uv pip install -q $PACKAGES \
+    --default-index "$FLAGOS_PYPI" \
+    --index "$MIRROR" \
+    --index-strategy unsafe-best-match
 
 POST_PACKAGES=$(python - <<'PY'
 import os
@@ -65,7 +59,7 @@ with open(os.environ["BACKENDS_YAML"], encoding="utf-8") as stream:
 print(" ".join(backend.get("triton_post_install", [])))
 PY
 )
-if [[ "$BACKEND" != "iluvatar" && -n "$POST_PACKAGES" ]]; then
+if [[ -n "$POST_PACKAGES" ]]; then
     uv pip install -q $POST_PACKAGES \
         --default-index "$FLAGOS_PYPI" \
         --index "$MIRROR" \

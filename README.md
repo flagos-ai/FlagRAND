@@ -38,11 +38,12 @@ FlagGems-compatible `summary.json`, and exposes exactly five delivery results:
 
 ### Iluvatar BI-V150 / CoreX 4.4
 
-The BI-V150 setup reuses the CoreX Python, Torch, and Triton already installed
-under `/usr/local`; it does not download or replace the vendor runtime.
+The delivery card is expected to provide CoreX 4.4, `/usr/local/bin/python3`,
+Torch and Triton. Create a project environment that reuses that vendor runtime:
 
 ```bash
-./setup.sh iluvatar
+/usr/local/bin/python3 -m venv --system-site-packages .venv
+.venv/bin/python -m pip install -e . --no-deps --no-build-isolation
 source scripts/ci/backend_env.sh iluvatar
 bash tools/gpu_check_iluvatar.sh
 
