@@ -20,20 +20,20 @@ pytestmark = [
 def test_raw_matches_known_seed_zero_vector() -> None:
     expected = [
         1713891541,
-        -1135104948,
         -513161843,
+        -1135104948,
         -1694442536,
         -2075847199,
-        253345875,
         -259166550,
+        253345875,
         -2080868880,
         107075191,
-        639715526,
         -1232967847,
+        639715526,
         2000445424,
         -257357124,
-        -1092682108,
         291018424,
+        -1092682108,
         -1200667194,
     ]
     actual = torch.empty(len(expected), device="cuda", dtype=torch.int32)
@@ -43,9 +43,9 @@ def test_raw_matches_known_seed_zero_vector() -> None:
 
 @pytest.mark.raw32
 def test_raw_split_matches_bulk_across_launcher_specializations() -> None:
-    bulk = torch.empty(17, device="cuda", dtype=torch.int32)
+    bulk = torch.empty(20, device="cuda", dtype=torch.int32)
     first = torch.empty(5, device="cuda", dtype=torch.int32)
-    second = torch.empty(12, device="cuda", dtype=torch.int32)
+    second = torch.empty(15, device="cuda", dtype=torch.int32)
 
     curand.generate(curand.create_generator(seed=17), bulk)
     split_generator = curand.create_generator(seed=17)
@@ -133,9 +133,8 @@ def test_corex_uniform_f64_matches_exact_philox_pair_reference(offset: int) -> N
     scale = float(1 << 53)
     expected = []
     for raw0, raw1 in zip(words[0::2], words[1::2], strict=True):
-        hi = (raw0 & 0xFFFFFFFF) >> 5
-        lo = (raw1 & 0xFFFFFFFF) >> 6
-        expected.append(((1 << 53) - ((hi << 26) | lo)) / scale)
+        bits = (raw0 & 0xFFFFFFFF) ^ ((raw1 & 0xFFFFFFFF) << 21)
+        expected.append((bits + 0.5) / scale)
 
     assert actual.cpu().tolist() == expected
 
@@ -149,7 +148,7 @@ def test_corex_uniform_f64_matches_exact_philox_pair_reference(offset: int) -> N
 )
 def test_uniform_split_matches_bulk(dtype: torch.dtype) -> None:
     operation = curand.generate_uniform_double if dtype == torch.float64 else curand.generate_uniform
-    n, first_n = (9, 3) if dtype == torch.float64 else (17, 5)
+    n, first_n = (10, 3) if dtype == torch.float64 else (20, 5)
     bulk = torch.empty(n, device="cuda", dtype=dtype)
     first = torch.empty(first_n, device="cuda", dtype=dtype)
     second = torch.empty(n - first_n, device="cuda", dtype=dtype)

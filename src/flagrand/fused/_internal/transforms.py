@@ -16,22 +16,16 @@ def uint32_to_uniform(x):
 
 @triton.jit
 def uint32_to_uniform_curand_compat(x):
-    u = tl.uint_to_uniform_float(x.to(tl.uint32, bitcast=True))
-    return 1.0 - u
+    unsigned = x.to(tl.uint32, bitcast=True)
+    return unsigned.to(tl.float32) * 2.3283064365386963e-10 + 1.1641532182693481e-10
 
 
 @triton.jit
 def uint32_pair_to_uniform64_curand_compat(x0, x1):
-    native = uint32_pair_to_uniform64_native(x0, x1)
-    return 1.0 - native
-
-
-@triton.jit
-def uint32_pair_to_uniform64_native(x0, x1):
-    hi = (x0.to(tl.uint32, bitcast=True) >> 5).to(tl.uint64)
-    lo = (x1.to(tl.uint32, bitcast=True) >> 6).to(tl.uint64)
-    mantissa = (hi << 26) | lo
-    return mantissa.to(tl.float64) * 1.1102230246251565e-16
+    low = x0.to(tl.uint32, bitcast=True).to(tl.uint64)
+    high = x1.to(tl.uint32, bitcast=True).to(tl.uint64)
+    bits = low ^ (high << 21)
+    return bits.to(tl.float64) * 1.1102230246251565e-16 + 5.5511151231257827e-17
 
 
 @triton.jit

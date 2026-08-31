@@ -35,17 +35,27 @@ def warm_flagrand_compilation_paths(seed: int) -> dict[str, Any]:
 
 def run_native_compatibility_preflight(seed: int) -> dict[str, Any]:
     checks: dict[str, bool] = {}
-    for offset in range(8):
-        expected = torch.empty(17, device="cuda", dtype=torch.int32)
+    mismatches: dict[str, dict[str, list[int]]] = {}
+    probes = [(f"raw32_offset_{offset}", offset, 17) for offset in range(8)]
+    probes.append(("raw32_aligned_fast_path", 0, 32))
+    for name, offset, n in probes:
+        expected = torch.empty(n, device="cuda", dtype=torch.int32)
         actual = torch.empty_like(expected)
         with NvidiaCurandGenerator(seed=seed, offset=offset) as generator:
             generator.generate("raw32", expected)
         invoke_flagrand("raw32", make_flagrand_generator(seed, offset=offset), actual)
-        checks[f"raw32_offset_{offset}"] = bool(torch.equal(expected, actual))
+        matches = bool(torch.equal(expected, actual))
+        checks[name] = matches
+        if not matches:
+            mismatches[name] = {
+                "nvidia_curand_head": expected[:8].cpu().tolist(),
+                "flagrand_head": actual[:8].cpu().tolist(),
+            }
     torch.cuda.synchronize()
     return {
         "status": "pass" if all(checks.values()) else "fail",
         "checks": checks,
+        "mismatches": mismatches,
         "curand_library": nvidia_curand_library_path(),
     }
 

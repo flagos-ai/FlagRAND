@@ -36,7 +36,18 @@ def test_raw32_matches_native_curand(seed: int, offset: int) -> None:
         generator.generate("raw32", expected)
     curand.generate(curand.create_generator(seed=seed, offset=offset), actual)
     torch.cuda.synchronize()
-    assert torch.equal(actual, expected)
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
+@pytest.mark.raw32
+def test_raw32_aligned_fast_path_matches_native_curand() -> None:
+    expected = torch.empty(64, device="cuda", dtype=torch.int32)
+    actual = torch.empty_like(expected)
+    with NvidiaCurandGenerator(seed=43) as generator:
+        generator.generate("raw32", expected)
+    curand.generate(curand.create_generator(seed=43), actual)
+    torch.cuda.synchronize()
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize(
@@ -54,7 +65,24 @@ def test_uniform_matches_native_curand(distribution, operation, dtype: torch.dty
         generator.generate(distribution, expected)
     operation(curand.create_generator(seed=71, offset=offset), actual)
     torch.cuda.synchronize()
-    assert torch.equal(actual, expected)
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
+@pytest.mark.parametrize(
+    ("distribution", "operation", "dtype"),
+    (
+        pytest.param("uniform_f32", curand.generate_uniform, torch.float32, marks=pytest.mark.uniform_f32),
+        pytest.param("uniform_f64", curand.generate_uniform_double, torch.float64, marks=pytest.mark.uniform_f64),
+    ),
+)
+def test_uniform_aligned_fast_path_matches_native_curand(distribution, operation, dtype: torch.dtype) -> None:
+    expected = torch.empty(64, device="cuda", dtype=dtype)
+    actual = torch.empty_like(expected)
+    with NvidiaCurandGenerator(seed=73) as generator:
+        generator.generate(distribution, expected)
+    operation(curand.create_generator(seed=73), actual)
+    torch.cuda.synchronize()
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize(

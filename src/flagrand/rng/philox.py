@@ -25,14 +25,14 @@ def _philox_generate(seed, counter):
 def _philox_window4(seed, counter, SHIFT: tl.constexpr):
     a0, a1, a2, a3 = _philox_generate(seed, counter)
     if SHIFT == 0:
-        return a0, a2, a1, a3
+        return a0, a1, a2, a3
 
     b0, b1, b2, b3 = _philox_generate(seed, counter + 1)
     if SHIFT == 1:
-        return a2, a1, a3, b0
+        return a1, a2, a3, b0
     if SHIFT == 2:
-        return a1, a3, b0, b2
-    return a3, b0, b2, b1
+        return a2, a3, b0, b1
+    return a3, b0, b1, b2
 
 
 @triton.jit
@@ -44,9 +44,11 @@ def _philox_kernel(out_ptr, seed, base_counter, n, BLOCK: tl.constexpr):
     r0, r1, r2, r3 = _philox_generate(seed, counter)
     # Build a (BLOCK, 4) tile and store with one 2D op so the compiler can
     # emit 16-byte vector stores (4 contiguous uint32 per counter).
-    r01 = tl.join(r0, r1)  # (BLOCK, 2)
-    r23 = tl.join(r2, r3)  # (BLOCK, 2)
-    tile = tl.join(r01, r23)  # (BLOCK, 2, 2)
+    # A nested join interleaves the two inner blocks when flattened. Pair
+    # lanes 0/2 and 1/3 so the stored order is the cuRAND x/y/z/w order.
+    r02 = tl.join(r0, r2)  # (BLOCK, 2)
+    r13 = tl.join(r1, r3)  # (BLOCK, 2)
+    tile = tl.join(r02, r13)  # (BLOCK, 2, 2)
     tile = tl.reshape(tile, (BLOCK, 4))
     base = (offs * 4)[:, None] + tl.arange(0, 4)[None, :]
     tl.store(out_ptr + base, tile.to(tl.int32, bitcast=True), mask=mask[:, None])
@@ -97,9 +99,9 @@ if HAS_LIBTUNER:
         mask = offs < n_counters
         counter = base_counter + offs
         r0, r1, r2, r3 = _philox_generate(seed, counter)
-        r01 = tl.join(r0, r1)
-        r23 = tl.join(r2, r3)
-        tile = tl.join(r01, r23)
+        r02 = tl.join(r0, r2)
+        r13 = tl.join(r1, r3)
+        tile = tl.join(r02, r13)
         tile = tl.reshape(tile, (BLOCK, 4))
         base = (offs * 4)[:, None] + tl.arange(0, 4)[None, :]
         tl.store(out_ptr + base, tile.to(tl.int32, bitcast=True), mask=mask[:, None])

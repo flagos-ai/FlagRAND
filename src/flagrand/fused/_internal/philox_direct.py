@@ -50,9 +50,9 @@ def _philox_uniform_f32_kernel(out_ptr, seed, base_counter, n_counters, BLOCK: t
     u2 = uint32_to_uniform(r2)
     u3 = uint32_to_uniform(r3)
 
-    u01 = tl.join(u0, u1)
-    u23 = tl.join(u2, u3)
-    tile = tl.reshape(tl.join(u01, u23), (BLOCK, 4))
+    u02 = tl.join(u0, u2)
+    u13 = tl.join(u1, u3)
+    tile = tl.reshape(tl.join(u02, u13), (BLOCK, 4))
     base = (offs * 4)[:, None] + tl.arange(0, 4)[None, :]
     tl.store(out_ptr + base, tile, mask=mask[:, None])
 
@@ -118,9 +118,9 @@ def _philox_normal_f32_kernel(
     y2 = mean + stddev * n2
     y3 = mean + stddev * n3
 
-    y01 = tl.join(y0, y1)
-    y23 = tl.join(y2, y3)
-    tile = tl.reshape(tl.join(y01, y23), (BLOCK, 4))
+    y02 = tl.join(y0, y2)
+    y13 = tl.join(y1, y3)
+    tile = tl.reshape(tl.join(y02, y13), (BLOCK, 4))
     offsets = base[:, None] + tl.arange(0, 4)[None, :]
     tl.store(out_ptr + offsets, tile, mask=mask[:, None] & (offsets < n))
 
@@ -200,9 +200,9 @@ def _philox_lognormal_f32_kernel(
     y2 = tl.exp(mean + stddev * n2)
     y3 = tl.exp(mean + stddev * n3)
 
-    y01 = tl.join(y0, y1)
-    y23 = tl.join(y2, y3)
-    tile = tl.reshape(tl.join(y01, y23), (BLOCK, 4))
+    y02 = tl.join(y0, y2)
+    y13 = tl.join(y1, y3)
+    tile = tl.reshape(tl.join(y02, y13), (BLOCK, 4))
     offsets = base[:, None] + tl.arange(0, 4)[None, :]
     tl.store(out_ptr + offsets, tile, mask=mask[:, None] & (offsets < n))
 
@@ -276,9 +276,9 @@ if HAS_LIBTUNER:
         u2 = uint32_to_uniform(r2)
         u3 = uint32_to_uniform(r3)
 
-        u01 = tl.join(u0, u1)
-        u23 = tl.join(u2, u3)
-        tile = tl.reshape(tl.join(u01, u23), (BLOCK, 4))
+        u02 = tl.join(u0, u2)
+        u13 = tl.join(u1, u3)
+        tile = tl.reshape(tl.join(u02, u13), (BLOCK, 4))
         base = (offs * 4)[:, None] + tl.arange(0, 4)[None, :]
         tl.store(out_ptr + base, tile, mask=mask[:, None])
 
@@ -324,9 +324,9 @@ if HAS_LIBTUNER:
         y2 = mean + stddev * n2
         y3 = mean + stddev * n3
 
-        y01 = tl.join(y0, y1)
-        y23 = tl.join(y2, y3)
-        tile = tl.reshape(tl.join(y01, y23), (BLOCK, 4))
+        y02 = tl.join(y0, y2)
+        y13 = tl.join(y1, y3)
+        tile = tl.reshape(tl.join(y02, y13), (BLOCK, 4))
         offsets = base[:, None] + tl.arange(0, 4)[None, :]
         tl.store(out_ptr + offsets, tile, mask=mask[:, None] & (offsets < n))
 

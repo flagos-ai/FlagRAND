@@ -74,14 +74,11 @@ def main() -> int:
         manifest["compilation_preflight"] = warm_flagrand_compilation_paths(args.seed)
         manifest["native_compatibility_preflight"] = run_native_compatibility_preflight(args.seed)
         LOGGER.info("Native compatibility preflight: %s", manifest["native_compatibility_preflight"]["status"])
-        if manifest["native_compatibility_preflight"]["status"] != "pass":
-            write_results(run_directory, manifest, records)
-            LOGGER.info("Results: %s", run_directory)
-            return 2
+        native_compatibility_failed = manifest["native_compatibility_preflight"]["status"] != "pass"
         if args.preflight_only:
             write_results(run_directory, manifest, records)
             LOGGER.info("Results: %s", run_directory)
-            return 0
+            return 2 if native_compatibility_failed else 0
 
         for distribution in args.distributions:
             for n in args.shape_map[distribution]:
@@ -112,6 +109,8 @@ def main() -> int:
     failures = [record for record in records if record["status"] != "pass"]
     LOGGER.info("Completed %d records with %d failure(s).", len(records), len(failures))
     LOGGER.info("Results: %s", run_directory)
+    if native_compatibility_failed:
+        return 2
     return 1 if failures else 0
 
 
