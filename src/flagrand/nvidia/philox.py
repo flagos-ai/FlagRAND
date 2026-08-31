@@ -6,6 +6,7 @@ import triton.language as tl
 
 from flagrand.fused._internal.transforms import uint32_pair_to_uniform64_curand_compat, uniform_to_normal_fast_f64
 from flagrand.runtime import CachedKernelLauncher
+from flagrand.runtime.specialization import make_specialization_key
 
 
 @triton.jit
@@ -239,18 +240,26 @@ def _launch_uniform(out: torch.Tensor, seed: int, offset: int, block_size: int, 
     base_subsequence = offset // 4
     shift = offset % 4
     if shift == 0:
+        arguments = (out, seed, base_subsequence, n, n_groups)
+        constexpr_values = (block_size,)
+        option_values = (num_warps,)
         _UNIFORM_F64_LAUNCHER.launch(
             grid,
-            (out, seed, base_subsequence, n, n_groups),
-            (block_size,),
-            (num_warps,),
+            arguments,
+            constexpr_values,
+            option_values,
+            specialization_key=make_specialization_key(arguments, constexpr_values, option_values),
         )
     else:
+        arguments = (out, seed, base_subsequence, n, n_groups)
+        constexpr_values = (shift, block_size)
+        option_values = (num_warps,)
         _UNIFORM_F64_GENERIC_LAUNCHER.launch(
             grid,
-            (out, seed, base_subsequence, n, n_groups),
-            (shift, block_size),
-            (num_warps,),
+            arguments,
+            constexpr_values,
+            option_values,
+            specialization_key=make_specialization_key(arguments, constexpr_values, option_values),
         )
 
 
@@ -274,18 +283,26 @@ def _generate_normal_like(
         shift = offset % 4
         standard = mean == 0.0 and stddev == 1.0
         if shift == 0:
+            arguments = (out, seed, base_subsequence, n, n_groups, mean, stddev)
+            constexpr_values = (lognormal, standard, block_size)
+            option_values = (num_warps,)
             _NORMAL_F64_LAUNCHER.launch(
                 grid,
-                (out, seed, base_subsequence, n, n_groups, mean, stddev),
-                (lognormal, standard, block_size),
-                (num_warps,),
+                arguments,
+                constexpr_values,
+                option_values,
+                specialization_key=make_specialization_key(arguments, constexpr_values, option_values),
             )
         else:
+            arguments = (out, seed, base_subsequence, n, n_groups, mean, stddev)
+            constexpr_values = (lognormal, standard, shift, block_size)
+            option_values = (num_warps,)
             _NORMAL_F64_GENERIC_LAUNCHER.launch(
                 grid,
-                (out, seed, base_subsequence, n, n_groups, mean, stddev),
-                (lognormal, standard, shift, block_size),
-                (num_warps,),
+                arguments,
+                constexpr_values,
+                option_values,
+                specialization_key=make_specialization_key(arguments, constexpr_values, option_values),
             )
     generator.offset = offset + n
 

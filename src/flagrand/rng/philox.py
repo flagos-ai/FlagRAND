@@ -8,6 +8,7 @@ import triton.language as tl
 
 from flagrand.runtime import HAS_LIBTUNER, CachedKernelLauncher, require_libtuner, use_libtuner
 from flagrand.runtime.libtuner import PHILOX_LIBTUNER_CONFIGS, libentry, libtuner
+from flagrand.runtime.specialization import make_specialization_key
 
 
 @triton.jit
@@ -185,20 +186,28 @@ def generate_philox_raw_u32(
                 _philox_kernel_tuned[grid](out, seed_val, base_counter, n_counters)
             else:
                 grid = triton.cdiv(n_counters, block_size)
+                arguments = (out, seed_val, base_counter, n_counters)
+                constexpr_values = (block_size,)
+                option_values = (num_warps,)
                 _PHILOX_RAW_LAUNCHER.launch(
                     grid,
-                    (out, seed_val, base_counter, n_counters),
-                    (block_size,),
-                    (num_warps,),
+                    arguments,
+                    constexpr_values,
+                    option_values,
+                    specialization_key=make_specialization_key(arguments, constexpr_values, option_values),
                 )
         else:
             n_groups = triton.cdiv(n, 4)
             grid = triton.cdiv(n_groups, block_size)
+            arguments = (out, seed_val, base_counter, n, n_groups)
+            constexpr_values = (offset_val % 4, block_size)
+            option_values = (num_warps,)
             _PHILOX_RAW_GENERIC_LAUNCHER.launch(
                 grid,
-                (out, seed_val, base_counter, n, n_groups),
-                (offset_val % 4, block_size),
-                (num_warps,),
+                arguments,
+                constexpr_values,
+                option_values,
+                specialization_key=make_specialization_key(arguments, constexpr_values, option_values),
             )
     if seed is None and offset is None:
         generator.offset = offset_val + n

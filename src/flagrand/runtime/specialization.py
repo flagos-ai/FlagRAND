@@ -58,6 +58,51 @@ def value_tokens(values: tuple[object, ...]) -> tuple[tuple[object, ...], ...]:
     )
 
 
+def make_specialization_key(
+    values: tuple[object, ...],
+    constexpr_values: tuple[object, ...],
+    option_values: tuple[object, ...],
+) -> tuple[object, ...]:
+    return (
+        tuple(_specialization_value_key(value) for value in values),
+        constexpr_values,
+        option_values,
+    )
+
+
+def _specialization_value_key(value: object) -> tuple[object, ...]:
+    if isinstance(value, torch.Tensor):
+        return (
+            "tensor",
+            value.device.type,
+            value.device.index,
+            value.dtype,
+            value.data_ptr() % 16 == 0,
+        )
+    if isinstance(value, bool):
+        return ("bool", value)
+    if isinstance(value, int):
+        return (
+            "int",
+            _integer_signature(value),
+            value == 1,
+            value % 16 == 0,
+        )
+    if isinstance(value, float):
+        return ("float",)
+    return ("value", type(value), value)
+
+
+def _integer_signature(value: int) -> str:
+    if -(1 << 31) <= value < (1 << 31):
+        return "i32"
+    if 0 <= value < (1 << 32):
+        return "u32"
+    if -(1 << 63) <= value < (1 << 63):
+        return "i64"
+    return "u64"
+
+
 def _matches_hot_entry(
     entry: Any,
     values: tuple[object, ...],
