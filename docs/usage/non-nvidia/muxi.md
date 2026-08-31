@@ -15,8 +15,9 @@ PPU-ZW810E 请看 [PPU 运行指南](ppu.md)，使用 `benchmark.run_ppu` 和 `b
 | `generate_lognormal` | `float32` | 偶数 |
 | `generate_lognormal_double` | `float64` | 2 的倍数 |
 
-Torch 数字只作为同一设备上的平台参考，不表示算法等价。Muxi 入口默认跳过
-PPU cuRAND baseline；如需强制运行，可加 `--with-ppu-curand`。
+Muxi 入口默认使用沐曦原生 `libmcrand.so` 作为七类 Host API 的性能 baseline。
+Torch 数字仍只作为同一设备上的平台参考，不表示算法等价。PPU cuRAND baseline
+默认跳过；如需强制运行，可加 `--with-ppu-curand`。
 
 ## 1. 准备代码
 
@@ -82,6 +83,21 @@ PY
 `flagrand` 路径必须落在当前目录的 `src/flagrand` 下，target 的 backend 应为
 `maca`。脚本还会再次检查导入路径并记录全部 Python 源码的 SHA-256。
 
+确认当前运行环境能加载 mcRAND：
+
+```bash
+ldconfig -p | grep libmcrand.so
+python3 - <<'PY'
+from benchmark.muxi_matrix.mcrand import mcrand_library_path, mcrand_version
+
+print("mcRAND library:", mcrand_library_path())
+print("mcRAND version:", mcrand_version())
+PY
+```
+
+默认搜索 `$MACA_PATH/lib/libmcrand.so`、`/opt/maca/lib/libmcrand.so` 和
+`/opt/maca-*/lib/libmcrand.so`。非标准路径可通过 `FLAGRAND_MCRAND_PATH` 指定。
+
 ## 4. 正确性检验
 
 ```bash
@@ -106,7 +122,26 @@ Results: .../muxi_results/<timestamp>_smoke_philox
 
 
 
-## 5. 完整矩阵
+## 5. mcRAND smoke baseline
+
+先运行三组 shape 的七类 API，关闭无关的 Torch 参考：
+
+```bash
+python3 -m benchmark.run_muxi \
+  --profile smoke \
+  --skip-torch-reference
+```
+
+每个 shape 会依次运行 FlagRAND 和 mcRAND，并报告：
+
+```text
+speedup_vs_mcrand = mcRAND total_ms_median / FlagRAND total_ms_median
+```
+
+结果同时记录 mcRAND 动态库路径、版本、Host 总耗时、设备事件耗时和 enqueue 耗时。
+如需只验证 FlagRAND，可加 `--skip-mcrand`。
+
+## 6. 完整矩阵
 
 ```bash
 python3 -m benchmark.run_muxi --profile full
@@ -148,7 +183,7 @@ python3 -m benchmark.run_muxi \
 
 如果需要在 Muxi 入口里临时跑 PPU cuRAND，可加 `--with-ppu-curand`，通常不建议。
 
-## 6. LibTuner A/B
+## 7. LibTuner A/B
 
 手工配置基线：
 
@@ -182,7 +217,7 @@ python3 -m benchmark.run_muxi \
   --results-dir muxi_results/libtuner_hot
 ```
 
-## 7. 沐曦兼容层做了什么
+## 8. 沐曦兼容层做了什么
 
 兼容逻辑在 Triton target backend 为 `maca` 时有效：
 
@@ -193,7 +228,7 @@ python3 -m benchmark.run_muxi \
 因此验收目标是
 Philox 流推进一致、分段与整段一致，并通过分布统计检查。
 
-## 8. 结果目录
+## 9. 结果目录
 
 每次运行都会新建：
 

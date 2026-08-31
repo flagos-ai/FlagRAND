@@ -438,6 +438,7 @@ def normalise_performance(operator_id: str, records: list[dict[str, Any]]) -> di
         speedup = None
         for key in (
             "speedup_vs_corex_curand",
+            "speedup_vs_mcrand",
             "speedup_vs_ppu_acrand",
             "speedup_vs_ppu_curand",
             "speedup_vs_cann_aclnn",

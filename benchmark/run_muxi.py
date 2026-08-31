@@ -25,16 +25,20 @@ LOGGER = logging.getLogger(__name__)
 def main(
     *,
     default_results_dir_name: str = "muxi_results",
+    default_skip_mcrand: bool = False,
     default_skip_ppu_curand: bool = True,
     default_skip_ppu_acrand: bool = True,
+    default_acceptance_baseline: str = "mcrand",
     platform_name: str = "muxi",
 ) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
     args = parse_args(
         PROJECT_ROOT,
         default_results_dir_name=default_results_dir_name,
+        default_skip_mcrand=default_skip_mcrand,
         default_skip_ppu_curand=default_skip_ppu_curand,
         default_skip_ppu_acrand=default_skip_ppu_acrand,
+        default_acceptance_baseline=default_acceptance_baseline,
         platform_name=platform_name,
     )
     run_directory = create_run_directory(args.results_dir, args.profile_config.name)
@@ -44,6 +48,7 @@ def main(
         "distributions": args.distributions,
         "seed": args.seed,
         "preflight_only": args.preflight_only,
+        "skip_mcrand": args.skip_mcrand,
         "skip_ppu_curand": args.skip_ppu_curand,
         "skip_ppu_acrand": args.skip_ppu_acrand,
         "skip_torch_reference": args.skip_torch_reference,
@@ -66,16 +71,22 @@ def main(
 
         from benchmark.muxi_matrix.cases import (
             run_flagrand_case,
+            run_mcrand_case,
             run_ppu_acrand_case,
             run_ppu_curand_case,
             run_preflight,
             run_torch_references,
         )
+        from benchmark.muxi_matrix.mcrand import mcrand_available, mcrand_library_path, mcrand_version
         from benchmark.ppu_matrix.acrand import ppu_acrand_available
         from benchmark.ppu_matrix.curand import ppu_curand_available
         from flagrand.runtime import libtuner_status
 
         manifest["libtuner"] = libtuner_status()
+        manifest["mcrand_available"] = mcrand_available()
+        if manifest["mcrand_available"]:
+            manifest["mcrand_library_path"] = mcrand_library_path()
+            manifest["mcrand_version"] = mcrand_version()
         manifest["ppu_curand_available"] = ppu_curand_available()
         manifest["ppu_acrand_available"] = ppu_acrand_available()
 
@@ -103,8 +114,17 @@ def main(
                 )
                 continue
             record = run_flagrand_case(distribution, n, args.seed, args.profile_config)
+            mcrand_record = None
             ppu_record = None
             acrand_record = None
+            if not args.skip_mcrand:
+                mcrand_record = run_mcrand_case(
+                    distribution,
+                    n,
+                    args.seed,
+                    args.profile_config,
+                )
+                _annotate_speedup(record, mcrand_record, "mcrand")
             if not args.skip_ppu_curand:
                 ppu_record = run_ppu_curand_case(
                     distribution,
@@ -112,7 +132,7 @@ def main(
                     args.seed,
                     args.profile_config,
                 )
-                _annotate_ppu_speedup(record, ppu_record)
+                _annotate_speedup(record, ppu_record, "ppu_curand")
             if not args.skip_ppu_acrand:
                 acrand_record = run_ppu_acrand_case(
                     distribution,
@@ -120,9 +140,12 @@ def main(
                     args.seed,
                     args.profile_config,
                 )
-                _annotate_ppu_acrand_speedup(record, acrand_record)
+                _annotate_speedup(record, acrand_record, "ppu_acrand")
             records.append(record)
             print_record(record)
+            if mcrand_record is not None:
+                records.append(mcrand_record)
+                print_record(mcrand_record)
             if ppu_record is not None:
                 records.append(ppu_record)
                 print_record(ppu_record)
@@ -192,30 +215,21 @@ def _print_acceptance_shape_plan(args: Any) -> None:
         LOGGER.info("ACCEPTANCE_SHAPE %-15s N=%s", distribution, shapes)
 
 
-def _annotate_ppu_speedup(flagrand_record: dict[str, Any], ppu_record: dict[str, Any]) -> None:
-    if flagrand_record["status"] != "pass" or ppu_record["status"] != "pass":
+def _annotate_speedup(
+    flagrand_record: dict[str, Any],
+    baseline_record: dict[str, Any],
+    baseline: str,
+) -> None:
+    if flagrand_record["status"] != "pass" or baseline_record["status"] != "pass":
         return
-    flagrand_record["speedup_vs_ppu_curand"] = float(ppu_record["total_ms_median"]) / float(
+    flagrand_record[f"speedup_vs_{baseline}"] = float(baseline_record["total_ms_median"]) / float(
         flagrand_record["total_ms_median"]
     )
-    if "device_ms_median" in flagrand_record and "device_ms_median" in ppu_record:
-        flagrand_record["device_speedup_vs_ppu_curand"] = float(ppu_record["device_ms_median"]) / float(
+    if "device_ms_median" in flagrand_record and "device_ms_median" in baseline_record:
+        flagrand_record[f"device_speedup_vs_{baseline}"] = float(baseline_record["device_ms_median"]) / float(
             flagrand_record["device_ms_median"]
         )
-    ppu_record["speedup_reference_for"] = "flagrand_public"
-
-
-def _annotate_ppu_acrand_speedup(flagrand_record: dict[str, Any], ppu_record: dict[str, Any]) -> None:
-    if flagrand_record["status"] != "pass" or ppu_record["status"] != "pass":
-        return
-    flagrand_record["speedup_vs_ppu_acrand"] = float(ppu_record["total_ms_median"]) / float(
-        flagrand_record["total_ms_median"]
-    )
-    if "device_ms_median" in flagrand_record and "device_ms_median" in ppu_record:
-        flagrand_record["device_speedup_vs_ppu_acrand"] = float(ppu_record["device_ms_median"]) / float(
-            flagrand_record["device_ms_median"]
-        )
-    ppu_record["speedup_reference_for"] = "flagrand_public"
+    baseline_record["speedup_reference_for"] = "flagrand_public"
 
 
 if __name__ == "__main__":

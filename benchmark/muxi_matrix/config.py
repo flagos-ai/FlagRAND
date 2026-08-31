@@ -173,8 +173,10 @@ def parse_args(
     project_root: Path,
     *,
     default_results_dir_name: str = "muxi_results",
+    default_skip_mcrand: bool = False,
     default_skip_ppu_curand: bool = True,
     default_skip_ppu_acrand: bool = True,
+    default_acceptance_baseline: str = "mcrand",
     platform_name: str = "muxi",
 ) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -197,14 +199,12 @@ def parse_args(
     parser.add_argument(
         "--acceptance-profile",
         action="store_true",
-        help=(
-            "Run the fixed PPU acceptance shape set and print per-API speedups " "against the selected PPU baseline."
-        ),
+        help="Run the fixed acceptance shape set and print per-API speedups against the selected native baseline.",
     )
     parser.add_argument(
         "--acceptance-baseline",
-        choices=("ppu_acrand", "ppu_curand"),
-        default="ppu_acrand",
+        choices=("mcrand", "ppu_acrand", "ppu_curand"),
+        default=default_acceptance_baseline,
         help="Baseline used by --acceptance-profile speedup reporting.",
     )
     parser.add_argument(
@@ -229,6 +229,17 @@ def parse_args(
         "--skip-torch-reference",
         action="store_true",
         help="Skip PyTorch RNG and zero-write references.",
+    )
+    parser.add_argument(
+        "--skip-mcrand",
+        action="store_true",
+        help="Skip the MetaX native mcRAND baseline.",
+    )
+    parser.add_argument(
+        "--with-mcrand",
+        action="store_false",
+        dest="skip_mcrand",
+        help="Run the MetaX native mcRAND baseline.",
     )
     parser.add_argument(
         "--skip-ppu-curand",
@@ -262,6 +273,7 @@ def parse_args(
         type=Path,
         default=project_root / default_results_dir_name,
     )
+    parser.set_defaults(skip_mcrand=default_skip_mcrand)
     parser.set_defaults(skip_ppu_curand=default_skip_ppu_curand)
     parser.set_defaults(skip_ppu_acrand=default_skip_ppu_acrand)
     args = parser.parse_args()
@@ -341,6 +353,8 @@ def _resolve_acceptance_profile(
 
 
 def _validate_acceptance_baseline(args: argparse.Namespace) -> None:
+    if args.acceptance_baseline == "mcrand" and args.skip_mcrand:
+        raise SystemExit("--acceptance-profile requires --with-mcrand for mcrand reporting.")
     if args.acceptance_baseline == "ppu_acrand" and args.skip_ppu_acrand:
         raise SystemExit("--acceptance-profile requires --with-ppu-acrand for ppu_acrand reporting.")
     if args.acceptance_baseline == "ppu_curand" and args.skip_ppu_curand:
