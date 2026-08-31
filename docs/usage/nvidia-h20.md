@@ -37,7 +37,9 @@ export FLAGRAND_NVIDIA_CURAND_PATH=/absolute/path/to/libcurand.so
 .venv/bin/python -m benchmark.run_nvidia --preflight-only --device 0
 ```
 
-预检会编译七 API 的对齐与非对齐路径，并比较 offset 0 到 7 的 raw32 原生 cuRAND 位流。
+预检会编译七 API 的对齐与非对齐路径，比较 offset 0 到 7 的 raw32 位流，并逐元素比较
+Uniform f32/f64 的 offset 0 到 3 及 aligned fast path。若 Uniform 不一致，`manifest.json` 会保存
+原生值、FlagRAND 值、IEEE-754 位型和对应 raw32 words，供定位转换或 pair 顺序问题。
 
 ## Smoke
 

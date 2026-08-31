@@ -35,10 +35,10 @@ def warm_flagrand_compilation_paths(seed: int) -> dict[str, Any]:
 
 def run_native_compatibility_preflight(seed: int) -> dict[str, Any]:
     checks: dict[str, bool] = {}
-    mismatches: dict[str, dict[str, list[int]]] = {}
-    probes = [(f"raw32_offset_{offset}", offset, 17) for offset in range(8)]
-    probes.append(("raw32_aligned_fast_path", 0, 32))
-    for name, offset, n in probes:
+    mismatches: dict[str, dict[str, Any]] = {}
+    raw_probes = [(f"raw32_offset_{offset}", offset, 17) for offset in range(8)]
+    raw_probes.append(("raw32_aligned_fast_path", 0, 32))
+    for name, offset, n in raw_probes:
         expected = torch.empty(n, device="cuda", dtype=torch.int32)
         actual = torch.empty_like(expected)
         with NvidiaCurandGenerator(seed=seed, offset=offset) as generator:
@@ -51,6 +51,32 @@ def run_native_compatibility_preflight(seed: int) -> dict[str, Any]:
                 "nvidia_curand_head": expected[:8].cpu().tolist(),
                 "flagrand_head": actual[:8].cpu().tolist(),
             }
+
+    uniform_probes = []
+    for distribution in ("uniform_f32", "uniform_f64"):
+        uniform_probes.extend((f"{distribution}_offset_{offset}", distribution, offset, 18) for offset in range(4))
+        uniform_probes.append((f"{distribution}_aligned_fast_path", distribution, 0, 64))
+    for name, distribution, offset, n in uniform_probes:
+        expected = torch.empty(n, device="cuda", dtype=DTYPES[distribution])
+        actual = torch.empty_like(expected)
+        with NvidiaCurandGenerator(seed=seed, offset=offset) as generator:
+            generator.generate(distribution, expected)
+        invoke_flagrand(distribution, make_flagrand_generator(seed, offset=offset), actual)
+        matches = bool(torch.equal(expected, actual))
+        checks[name] = matches
+        if not matches:
+            head_n = 8
+            raw_n = head_n * (2 if distribution == "uniform_f64" else 1)
+            raw = torch.empty(raw_n, device="cuda", dtype=torch.int32)
+            with NvidiaCurandGenerator(seed=seed, offset=offset) as generator:
+                generator.generate("raw32", raw)
+            mismatches[name] = {
+                "nvidia_curand_head": expected[:head_n].cpu().tolist(),
+                "flagrand_head": actual[:head_n].cpu().tolist(),
+                "nvidia_curand_ieee_hex": _ieee_hex_head(expected, head_n),
+                "flagrand_ieee_hex": _ieee_hex_head(actual, head_n),
+                "raw32_head": raw.cpu().tolist(),
+            }
     torch.cuda.synchronize()
     return {
         "status": "pass" if all(checks.values()) else "fail",
@@ -58,6 +84,14 @@ def run_native_compatibility_preflight(seed: int) -> dict[str, Any]:
         "mismatches": mismatches,
         "curand_library": nvidia_curand_library_path(),
     }
+
+
+def _ieee_hex_head(values: torch.Tensor, n: int) -> list[str]:
+    if values.dtype == torch.float32:
+        words = values[:n].view(torch.int32).cpu().tolist()
+        return [f"0x{word & 0xFFFFFFFF:08x}" for word in words]
+    words = values[:n].view(torch.int64).cpu().tolist()
+    return [f"0x{word & 0xFFFFFFFFFFFFFFFF:016x}" for word in words]
 
 
 def run_flagrand_case(distribution: str, n: int, seed: int, profile: Profile) -> dict[str, Any]:

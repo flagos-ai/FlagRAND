@@ -47,6 +47,7 @@ def main() -> int:
         "distributions": args.distributions,
         "seed": args.seed,
         "device_index": args.device,
+        "execution_mode": "preflight_only" if args.preflight_only else "benchmark",
         "timing": {
             "scope": TIMING_SCOPE,
             "formal_metric": "total_ms_median",
