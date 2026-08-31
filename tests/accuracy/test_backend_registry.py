@@ -24,6 +24,7 @@ def test_registry_contains_supported_vendor_descriptors() -> None:
 
 def test_public_curand_uses_selected_vendor_override() -> None:
     expected_module = {
+        "nvidia": "flagrand.runtime.backend._nvidia.ops",
         "iluvatar": "flagrand.runtime.backend._iluvatar.ops",
         "ascend": "flagrand.runtime.backend._ascend.ops",
     }.get(device.vendor_name, "flagrand._curand_philox_fast_path")

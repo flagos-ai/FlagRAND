@@ -96,7 +96,10 @@ def _ieee_hex_head(values: torch.Tensor, n: int) -> list[str]:
 
 def run_flagrand_case(distribution: str, n: int, seed: int, profile: Profile) -> dict[str, Any]:
     record = _base_record("flagrand_public", distribution, n)
-    record.update(seed=seed, implementation_path="nvidia_triton_philox")
+    implementation_path = (
+        "nvidia_vendor_philox_group4_f64" if distribution.endswith("_f64") else "shared_philox_via_nvidia_dispatch"
+    )
+    record.update(seed=seed, implementation_path=implementation_path)
     try:
         output = torch.empty(n, device="cuda", dtype=DTYPES[distribution])
         replay = torch.empty_like(output)

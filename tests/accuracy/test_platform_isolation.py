@@ -12,6 +12,7 @@ ASCEND_SOURCE = PROJECT_ROOT / "src/flagrand/ascend/huawei910c.py"
 HOST_DISPATCH_SOURCE = PROJECT_ROOT / "src/flagrand/_curand_philox_fast_path.py"
 ASCEND_OPS_SOURCE = PROJECT_ROOT / "src/flagrand/runtime/backend/_ascend/ops.py"
 ILUVATAR_OPS_SOURCE = PROJECT_ROOT / "src/flagrand/runtime/backend/_iluvatar/ops.py"
+NVIDIA_OPS_SOURCE = PROJECT_ROOT / "src/flagrand/runtime/backend/_nvidia/ops.py"
 
 
 def _imported_modules(path: Path) -> set[str]:
@@ -68,3 +69,4 @@ def test_generic_dispatch_has_no_vendor_branches() -> None:
 def test_specialized_ops_live_under_vendor_backends() -> None:
     assert any(module.startswith("flagrand.ascend") for module in _imported_modules(ASCEND_OPS_SOURCE))
     assert any(module.startswith("flagrand.corex") for module in _imported_modules(ILUVATAR_OPS_SOURCE))
+    assert any(module.startswith("flagrand.nvidia") for module in _imported_modules(NVIDIA_OPS_SOURCE))

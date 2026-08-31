@@ -7,7 +7,7 @@ import torch
 
 from flagrand import curand
 from flagrand.fused._internal.philox_direct import generate_philox_lognormal_f32, generate_philox_normal_f32
-from flagrand.runtime import current_backend
+from flagrand.runtime import current_backend, current_vendor
 
 pytestmark = [
     pytest.mark.accuracy,
@@ -183,7 +183,7 @@ def test_uniform_split_matches_bulk(dtype: torch.dtype) -> None:
         ),
     ),
 )
-def test_distribution_offsets_count_consumed_raw_uint32_words(
+def test_distribution_offsets_follow_backend_contract(
     operation,
     dtype: torch.dtype,
     n: int,
@@ -193,6 +193,8 @@ def test_distribution_offsets_count_consumed_raw_uint32_words(
     generator = curand.create_generator(seed=46)
     out = torch.empty(n, device="cuda", dtype=dtype)
     operation(generator, out, **kwargs)
+    if current_vendor() == "nvidia" and dtype == torch.float64:
+        expected_offset = n
     assert generator.offset == expected_offset
 
 
