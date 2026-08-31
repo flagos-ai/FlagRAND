@@ -34,7 +34,7 @@ export FLAGRAND_NVIDIA_CURAND_PATH=/absolute/path/to/libcurand.so
 ## 预检
 
 ```bash
-python -m benchmark.run_nvidia --preflight-only --device 0
+.venv/bin/python -m benchmark.run_nvidia --preflight-only --device 0
 ```
 
 预检会编译七 API 的对齐与非对齐路径，并比较 offset 0 到 7 的 raw32 原生 cuRAND 位流。
@@ -42,13 +42,13 @@ python -m benchmark.run_nvidia --preflight-only --device 0
 ## Smoke
 
 ```bash
-python -m benchmark.run_nvidia --profile smoke --device 0
+.venv/bin/python -m benchmark.run_nvidia --profile smoke --device 0
 ```
 
 ## 正式矩阵
 
 ```bash
-python -m benchmark.run_nvidia --profile matrix --device 0
+.venv/bin/python -m benchmark.run_nvidia --profile matrix --device 0
 ```
 
 正式指标为 `total_ms_median`。每个 shape 的 speedup 为
