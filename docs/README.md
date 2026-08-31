@@ -11,3 +11,6 @@ FlagRAND 文档沿用 FlagGems 的用途分类，不在现行文档树中保留�
 正式国产卡验收入口为
 [hardware-acceptance.md](getting-started/hardware-acceptance.md)。平台实现和诊断说明位于
 [usage/non-nvidia](usage/non-nvidia/)。
+
+NVIDIA H20 的安装、原生 cuRAND 对比和验收命令见
+[nvidia-h20.md](usage/nvidia-h20.md)。

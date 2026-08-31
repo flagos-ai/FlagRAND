@@ -58,6 +58,7 @@ jobs:
           name: flagrand-${{ inputs.backend }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ci_logs/
+            nvidia_results/
             corex_results/
             ppu_logs/
             ppu_results/

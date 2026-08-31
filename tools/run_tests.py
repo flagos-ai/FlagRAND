@@ -45,11 +45,15 @@ DTYPE_MAP = {
     "torch.float64": "fp64",
 }
 PERFORMANCE_MODULES = {
+    "nvidia": "benchmark.run_nvidia",
     "ascend-cann900": "benchmark.run_ascend_910c",
     "iluvatar": "benchmark.run_corex",
     "thead": "benchmark.run_ppu",
 }
 PLATFORM_ALIASES = {
+    "nvidia": "nvidia",
+    "cuda": "nvidia",
+    "h20": "nvidia",
     "ascend": "ascend-cann900",
     "ascend_910c": "ascend-cann900",
     "ascend-cann900": "ascend-cann900",
@@ -154,6 +158,10 @@ def detect_platform() -> str:
 
 
 def supported_operator_ids(selected_platform: str) -> set[str]:
+    if selected_platform == "nvidia":
+        from benchmark.nvidia_matrix.config import ALL_DISTRIBUTIONS
+
+        return set(ALL_DISTRIBUTIONS)
     if selected_platform == "ascend-cann900":
         from benchmark.ascend_910c.config import ASCEND_910C_SUPPORTED_DISTRIBUTIONS
 
@@ -184,17 +192,25 @@ def probe_env(selected_platform: str) -> dict[str, Any]:
     except metadata.PackageNotFoundError:
         flagtree_version = None
     os_release = platform_module.freedesktop_os_release()
+    torch_info: dict[str, Any] = {
+        "version": torch.__version__,
+        "cuda_available": torch.cuda.is_available(),
+        "device_name": device_name,
+        "device_count": device_count,
+    }
+    if selected_platform == "nvidia":
+        properties = torch.cuda.get_device_properties(0)
+        torch_info.update(
+            cuda_runtime=torch.version.cuda,
+            compute_capability=f"{properties.major}.{properties.minor}",
+            total_memory=properties.total_memory,
+        )
     return {
         "architecture": platform_module.machine(),
         "os_name": os_release["ID"],
         "os_release": os_release["VERSION_ID"],
         "python": platform_module.python_version(),
-        "torch": {
-            "version": torch.__version__,
-            "cuda_available": torch.cuda.is_available(),
-            "device_name": device_name,
-            "device_count": device_count,
-        },
+        "torch": torch_info,
         "flagtree": flagtree_version,
         "triton": {
             "version": triton.__version__,
@@ -302,11 +318,14 @@ def parse_accuracy_data(result_file: Path) -> dict[str, Any]:
     }
 
 
-def _accuracy_test_path(operator: dict[str, Any], platform: str) -> Path:
+def _accuracy_test_paths(operator: dict[str, Any], platform: str) -> list[Path]:
     if platform == "ascend-cann900":
         matches = [path for path in operator["platform_accuracy_tests"] if "ascend_910c" in path]
-        return ROOT / matches[0]
-    return ROOT / str(operator["accuracy_test"])
+        return [ROOT / matches[0]]
+    paths = [ROOT / str(operator["accuracy_test"])]
+    if platform == "nvidia":
+        paths.extend(ROOT / str(path) for path in operator["platform_accuracy_tests"] if "nvidia" in str(path))
+    return paths
 
 
 def run_accuracy(gpu_id: int, operator: dict[str, Any], config: RunnerConfig) -> dict[str, Any]:
@@ -318,7 +337,7 @@ def run_accuracy(gpu_id: int, operator: dict[str, Any], config: RunnerConfig) ->
         sys.executable,
         "-m",
         "pytest",
-        str(_accuracy_test_path(operator, config.platform)),
+        *(str(path) for path in _accuracy_test_paths(operator, config.platform)),
         "-m",
         operator_id,
         "--record",
@@ -379,7 +398,7 @@ def _performance_command(
     profile = config.profile
     benchmark_profile = (
         "matrix"
-        if config.platform == "iluvatar" and profile == "acceptance"
+        if config.platform in {"iluvatar", "nvidia"} and profile == "acceptance"
         else ("full" if profile == "acceptance" else profile)
     )
     command = [
@@ -437,6 +456,7 @@ def normalise_performance(operator_id: str, records: list[dict[str, Any]]) -> di
         latency = float(record["total_ms_median"])
         speedup = None
         for key in (
+            "speedup_vs_nvidia_curand",
             "speedup_vs_corex_curand",
             "speedup_vs_ppu_acrand",
             "speedup_vs_ppu_curand",

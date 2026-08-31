@@ -13,6 +13,7 @@ build/
 dist/
 *.egg-info/
 muxi_results/
+nvidia_results/
 ppu_logs/
 ppu_results/
 ascend_910c_logs/

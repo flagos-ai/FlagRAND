@@ -1,0 +1,4 @@
+backend: nvidia
+runner_label: nvidia-h20
+gpu_check: tools/gpu_check_nvidia.sh
+profile: acceptance

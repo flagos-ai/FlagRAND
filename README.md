@@ -8,7 +8,7 @@ FlagRAND provides a Philox4x32-10 host API implemented with Triton. The public s
 - `src/flagrand/rng`, `fused`, `runtime`, `ascend`: implementation and backend support.
 - `conf/operators.yaml`: operator registry and required test coverage.
 - `tests/accuracy`: contract, deterministic and statistical correctness tests.
-- `benchmark`: end-to-end PPU, Muxi and Ascend 910C performance matrices.
+- `benchmark`: end-to-end NVIDIA, PPU, Muxi and Ascend 910C performance matrices.
 - `scripts`: reproducible platform and CI entry points.
 - `docs`: installation, usage and contribution guides.
 
@@ -27,6 +27,8 @@ python -m twine check dist/*
 
 - [Hardware acceptance](docs/getting-started/hardware-acceptance.md): clone, install,
   validate the device, run the acceptance matrix and verify `summary.json`.
+- [NVIDIA H20](docs/usage/nvidia-h20.md): CUDA environment, native cuRAND comparison,
+  correctness and performance matrices.
 - [Non-NVIDIA platforms](docs/usage/non-nvidia/): backend-specific runtime and
   diagnostic notes.
 - [Development](docs/contribution/development.md): operator registration,

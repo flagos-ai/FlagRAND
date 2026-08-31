@@ -1,4 +1,4 @@
-"""Opt-in end-to-end performance gate for PPU and Ascend 910C runners."""
+"""Opt-in end-to-end performance tests for supported hardware runners."""
 
 from __future__ import annotations
 
@@ -26,7 +26,9 @@ pytestmark = [pytest.mark.performance]
 
 
 def _performance_command(platform: str, profile: str, distribution: str) -> list[str]:
-    if platform == "ppu":
+    if platform == "nvidia":
+        command = [sys.executable, "-m", "benchmark.run_nvidia"]
+    elif platform == "ppu":
         command = [sys.executable, "-m", "benchmark.run_ppu", "--skip-torch-reference"]
     elif platform == "ascend_910c":
         command = [
@@ -42,10 +44,13 @@ def _performance_command(platform: str, profile: str, distribution: str) -> list
     command.extend(("--distributions", distribution))
 
     if profile == "acceptance":
-        command.extend(("--profile", "full", "--acceptance-profile"))
+        if platform == "nvidia":
+            command.extend(("--profile", "matrix"))
+        else:
+            command.extend(("--profile", "full", "--acceptance-profile"))
         if platform == "ppu":
             command.append("--strict-acceptance")
-        else:
+        elif platform == "ascend_910c":
             command.extend(("--speedup-min", os.environ.get("FLAGRAND_SPEEDUP_MIN", "0.95")))
     else:
         command.extend(("--profile", profile))
@@ -56,7 +61,7 @@ def _performance_command(platform: str, profile: str, distribution: str) -> list
 def test_hardware_performance_api(distribution: str) -> None:
     platform = os.environ.get("FLAGRAND_PERF_PLATFORM")
     if not platform:
-        pytest.skip("set FLAGRAND_PERF_PLATFORM=ppu or ascend_910c on a hardware runner")
+        pytest.skip("set FLAGRAND_PERF_PLATFORM=nvidia, ppu, or ascend_910c on a hardware runner")
     profile = os.environ.get("FLAGRAND_PERF_PROFILE", "smoke")
     command = _performance_command(platform, profile, distribution)
     LOGGER.info("Running: %s", " ".join(command))

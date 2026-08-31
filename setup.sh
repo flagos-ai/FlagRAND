@@ -9,6 +9,11 @@ export BACKEND BACKENDS_YAML
 cd "$PROJECT_DIR"
 
 PYTHON_VERSION=$(awk "/^  ${BACKEND}:/{found=1} found && /python:/{print \$2; exit}" "$BACKENDS_YAML" | tr -d '"')
+SYSTEM_SITE_PACKAGES=$(awk -v backend="$BACKEND" '
+  $0 == "  " backend ":" {found=1; next}
+  found && /^  [^ ]/ {exit}
+  found && /system_site_packages:/ {print $2; exit}
+' "$BACKENDS_YAML")
 VENDOR=$(echo "$BACKEND" | sed 's/-[^-]*$//')
 [[ "$VENDOR" == "$BACKEND" ]] && VENDOR="$BACKEND"
 PYPI_BASE=$(sed -n 's/^pypi_base: *"\(.*\)"/\1/p' "$BACKENDS_YAML")
@@ -24,8 +29,12 @@ if ! command -v uv >/dev/null 2>&1; then
         | tar xz -C "$HOME/.local/bin"
 fi
 
-uv python install "$PYTHON_VERSION" --python-preference only-managed -q
-uv venv .venv --python "$PYTHON_VERSION" --python-preference only-managed -q
+if [[ "$SYSTEM_SITE_PACKAGES" == "true" ]]; then
+    "${FLAGRAND_SYSTEM_PYTHON:-python3}" -m venv --system-site-packages .venv
+else
+    uv python install "$PYTHON_VERSION" --python-preference only-managed -q
+    uv venv .venv --python "$PYTHON_VERSION" --python-preference only-managed -q
+fi
 source .venv/bin/activate
 source scripts/ci/backend_env.sh "$BACKEND"
 
@@ -45,10 +54,12 @@ with open(os.environ["BACKENDS_YAML"], encoding="utf-8") as stream:
 print(" ".join(backend["deps"] + backend["triton"]))
 PY
 )
-uv pip install -q $PACKAGES \
-    --default-index "$FLAGOS_PYPI" \
-    --index "$MIRROR" \
-    --index-strategy unsafe-best-match
+if [[ -n "$PACKAGES" ]]; then
+    uv pip install -q $PACKAGES \
+        --default-index "$FLAGOS_PYPI" \
+        --index "$MIRROR" \
+        --index-strategy unsafe-best-match
+fi
 
 POST_PACKAGES=$(python - <<'PY'
 import os

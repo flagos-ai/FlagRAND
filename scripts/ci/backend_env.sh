@@ -4,6 +4,14 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BACKEND="$1"
 
 case "$BACKEND" in
+    nvidia)
+        export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
+        export PATH="$CUDA_HOME/bin:$PATH"
+        export LD_LIBRARY_PATH="$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"
+        export LIBRARY_PATH="$CUDA_HOME/lib64:${LIBRARY_PATH:-}"
+        export CPATH="$CUDA_HOME/include${CPATH:+:$CPATH}"
+        export FLAGRAND_VENDOR=nvidia
+        ;;
     ascend-cann900)
         set +u
         source /usr/local/Ascend/cann/set_env.sh

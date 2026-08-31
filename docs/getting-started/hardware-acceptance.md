@@ -1,6 +1,6 @@
-# FlagRAND 国产卡验收流程
+# FlagRAND 硬件验收流程
 
-适用后端：天数智芯 BI-V150、PPU-ZW810E、华为 Ascend 910C。
+适用后端：NVIDIA H20、天数智芯 BI-V150、PPU-ZW810E、华为 Ascend 910C。
 
 节点应已部署对应厂商的驱动和运行时，并具备 FlagRAND 仓库的 SSH 读取权限。验收固定从远端
 `main` 获取源码，不复用已有源码目录、项目虚拟环境或历史结果目录。
@@ -50,7 +50,7 @@ FLAGRAND_PERF_PROFILE=acceptance \
 export SUMMARY="$PWD/corex_results/ci_${FLAGRAND_RUN_ID}/summary.json"
 ```
 
-完成后执行第 4 节校验结果。
+完成后执行第 5 节校验结果。
 
 ## 2. PPU-ZW810E
 
@@ -93,7 +93,7 @@ FLAGRAND_PERF_PROFILE=acceptance \
 export SUMMARY="$PWD/ppu_results/ci_${FLAGRAND_RUN_ID}/summary.json"
 ```
 
-完成后执行第 4 节校验结果。FP64 精确构造专项显示 8 个 `skipped` 属于平台能力差异，不计为失败。
+完成后执行第 5 节校验结果。FP64 精确构造专项显示 8 个 `skipped` 属于平台能力差异，不计为失败。
 
 ## 3. 华为 Ascend 910C / CANN 9.0
 
@@ -137,9 +137,49 @@ FLAGRAND_PERF_PROFILE=acceptance \
 export SUMMARY="$PWD/ascend_910c_results/ci_${FLAGRAND_RUN_ID}/summary.json"
 ```
 
-完成后执行第 4 节校验结果。
+完成后执行第 5 节校验结果。
 
-## 4. 校验 summary.json
+## 4. NVIDIA H20
+
+### 4.1 获取源码
+
+克隆待验证的 NVIDIA 集成分支，并记录提交。
+
+```bash
+git clone --branch codex/nvidia-h20-integration --single-branch \
+  git@github.com:flagos-ai/FlagRAND.git FlagRAND
+cd FlagRAND
+git rev-parse HEAD
+```
+
+### 4.2 安装 FlagRAND
+
+H20 节点预装 NVIDIA driver、CUDA、PyTorch 和 Triton。项目虚拟环境继承节点当前 Python 的硬件包。
+
+```bash
+export FLAGRAND_SYSTEM_PYTHON="${FLAGRAND_SYSTEM_PYTHON:-python3}"
+./setup.sh nvidia
+```
+
+### 4.3 检查运行环境
+
+```bash
+source scripts/ci/backend_env.sh nvidia
+bash tools/gpu_check_nvidia.sh
+```
+
+### 4.4 执行正式验收
+
+```bash
+export FLAGRAND_RUN_ID="h20_$(date +%Y%m%d_%H%M%S)"
+FLAGRAND_PERF_PROFILE=acceptance \
+  bash scripts/ci/run_backend_ci.sh nvidia
+export SUMMARY="$PWD/nvidia_results/ci_${FLAGRAND_RUN_ID}/summary.json"
+```
+
+完成后执行第 5 节校验结果。
+
+## 5. 校验 summary.json
 
 以下命令使用前一节设置的 `SUMMARY` 路径，检查文件、FlagOS schema、交付项名称和数学正确性结果，
 并打印各交付项的统计计数。

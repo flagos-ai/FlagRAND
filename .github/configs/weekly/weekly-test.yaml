@@ -1,4 +1,6 @@
 backends:
+  NVIDIA-H20:
+    enabled: true
   BI-V150:
     enabled: true
   PPU-ZW810E:

@@ -228,6 +228,8 @@ def _distribution_order(
 
 def _baseline_backend(manifest: dict[str, Any]) -> str:
     platform_name = str(manifest["platform"])
+    if platform_name == "nvidia_h20_cuda":
+        return "nvidia_curand"
     if platform_name == "iluvatar_bi_v150_corex":
         return "corex_curand"
     if platform_name == "huawei_ascend_910c":

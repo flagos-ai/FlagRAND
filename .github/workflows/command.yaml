@@ -39,6 +39,11 @@ jobs:
           OPERATOR="${PARAMS%%:*}"
           RUNNER="${PARAMS##*:}"
           case "$RUNNER" in
+            nvidia|h20|nvidia-h20)
+              RUNNER=nvidia-h20
+              BACKEND=nvidia
+              GPU_CHECK=tools/gpu_check_nvidia.sh
+              ;;
             iluvatar)
               BACKEND=iluvatar
               GPU_CHECK=tools/gpu_check_iluvatar.sh
@@ -86,6 +91,7 @@ jobs:
           name: ${{ needs.preprocess.outputs.operator }}-${{ needs.preprocess.outputs.backend }}-${{ github.run_id }}
           path: |
             ci_logs/
+            nvidia_results/
             corex_results/
             ppu_results/
             ascend_910c_results/

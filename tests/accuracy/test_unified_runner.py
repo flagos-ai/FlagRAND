@@ -4,6 +4,7 @@ import json
 
 from tools.run_tests import (
     RunnerConfig,
+    _accuracy_test_paths,
     _performance_command,
     get_ops_from_inventory,
     get_ops_to_test,
@@ -16,6 +17,7 @@ from tools.run_tests import (
 
 def test_acceptance_profile_is_translated_for_each_backend(tmp_path) -> None:
     cases = {
+        "nvidia": ("matrix", set()),
         "thead": ("full", {"--skip-torch-reference", "--acceptance-profile"}),
         "ascend-cann900": ("full", {"--acceptance-profile"}),
         "iluvatar": ("matrix", set()),
@@ -34,6 +36,14 @@ def test_acceptance_profile_is_translated_for_each_backend(tmp_path) -> None:
         profile_index = command.index("--profile")
         assert command[profile_index + 1] == expected_profile
         assert expected_flags.issubset(command)
+
+
+def test_nvidia_accuracy_combines_shared_cuda_and_native_curand_tests() -> None:
+    operator = next(item for item in get_ops_from_inventory() if item["id"] == "uniform_f64")
+
+    paths = [path.name for path in _accuracy_test_paths(operator, "nvidia")]
+
+    assert paths == ["test_philox_cuda.py", "test_philox_nvidia.py"]
 
 
 def test_registry_uses_flaggems_maturity_stages() -> None:
@@ -83,6 +93,7 @@ def test_platform_capabilities_come_from_benchmark_configs() -> None:
         "lognormal_f32",
     }
     assert supported_operator_ids("ascend-cann900") == supported_operator_ids("thead")
+    assert supported_operator_ids("nvidia") == supported_operator_ids("thead")
 
 
 def test_performance_records_are_normalised_to_flaggems_schema(tmp_path) -> None:
@@ -112,6 +123,30 @@ def test_performance_records_are_normalised_to_flaggems_schema(tmp_path) -> None
         "gems": 0.05,
         "speedup": 1.5,
     }
+
+
+def test_nvidia_performance_records_use_native_curand_speedup(tmp_path) -> None:
+    raw = normalise_performance(
+        "normal_f64",
+        [
+            {
+                "backend": "flagrand_public",
+                "distribution": "normal_f64",
+                "dtype": "float64",
+                "n": 65536,
+                "status": "pass",
+                "total_ms_median": 0.08,
+                "speedup_vs_nvidia_curand": 1.25,
+            }
+        ],
+    )
+    result_file = tmp_path / "nvidia_performance_result.json"
+    result_file.write_text(json.dumps(raw), encoding="utf-8")
+
+    result = parse_performance_data("normal_f64", result_file)
+
+    assert result["status"] == "Passed"
+    assert result["data"]["fp64"]["speedup"] == 1.25
 
 
 def test_missing_native_baseline_is_reported_as_skipped(tmp_path) -> None:

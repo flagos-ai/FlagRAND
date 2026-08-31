@@ -108,6 +108,7 @@ def test_summary_groups_accuracy_failures_by_reason() -> None:
 
 def test_summary_selects_the_platform_acceptance_baseline() -> None:
     platforms = (
+        ({"platform": "nvidia_h20_cuda"}, "nvidia_curand"),
         ({"platform": "huawei_ascend_910c"}, "cann_aclnn"),
         ({"platform": "PPU", "acceptance_baseline": "ppu_acrand"}, "ppu_acrand"),
     )

@@ -1,5 +1,12 @@
 [
   {
+    "backend": "nvidia",
+    "runner_label": "nvidia-h20",
+    "label": "vendor/NVIDIA",
+    "gpu_check": "tools/gpu_check_nvidia.sh",
+    "enabled": true
+  },
+  {
     "backend": "ascend-cann900",
     "runner_label": "cann9",
     "label": "vendor/Ascend",

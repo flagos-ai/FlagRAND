@@ -17,7 +17,7 @@
 - `.github/workflows/linter.yml`：执行代码风格检查。
 - `.github/workflows/build-check.yml`：构建并检查 wheel/sdist。
 - `.github/workflows/unittest.yaml`：根据 `.github/backends.json` 选择硬件后端，并调用可复用的 `.github/workflows/backend-test.yaml`。
-- 三个自托管 runner 标签分别为 `iluvatar`、`thead` 和 `cann9`，对应 `iluvatar`、`thead`、`ascend-cann900` 后端。
+- 四个自托管 runner 标签分别为 `nvidia-h20`、`iluvatar`、`thead` 和 `cann9`，对应 `nvidia`、`iluvatar`、`thead`、`ascend-cann900` 后端。
 - `scripts/ci/run_backend_ci.sh <backend>` 是统一硬件入口；它执行环境记录、注册表检查、统一 runner 测试、正确性与性能矩阵，并生成交付 `summary.json`。
 
 正式 acceptance 示例：
@@ -34,6 +34,7 @@ bash scripts/ci/run_backend_ci.sh thead
 
 | 后端 | 结果目录 |
 |---|---|
+| `nvidia` | `nvidia_results/ci_<RUN_ID>/summary.json` |
 | `iluvatar` | `corex_results/ci_<RUN_ID>/summary.json` |
 | `thead` | `ppu_results/ci_<RUN_ID>/summary.json` |
 | `ascend-cann900` | `ascend_910c_results/ci_<RUN_ID>/summary.json` |

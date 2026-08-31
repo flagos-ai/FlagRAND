@@ -57,6 +57,11 @@ logger.info("vendor: %s", current_vendor())
 logger.info("backend: %s", current_backend())
 logger.info("device: %s", device.name)
 logger.info("device count: %s", device.device_count)
+if current_vendor() == "nvidia" and device.device_count:
+    properties = torch.cuda.get_device_properties(0)
+    logger.info("torch CUDA runtime: %s", torch.version.cuda)
+    logger.info("compute capability: %s.%s", properties.major, properties.minor)
+    logger.info("device memory: %s", properties.total_memory)
 PY
 
 "$PYTHON_BIN" -m compileall -q src benchmark tests tools
@@ -64,6 +69,9 @@ PY
 "$PYTHON_BIN" -m pytest -q tests/accuracy/test_unified_runner.py | tee "$LOG_DIR/unified-runner-tests.log"
 
 case "$BACKEND" in
+    nvidia)
+        RESULTS_DIR="$PROJECT_DIR/nvidia_results/ci_$RUN_ID"
+        ;;
     ascend-cann900)
         RESULTS_DIR="$PROJECT_DIR/ascend_910c_results/ci_$RUN_ID"
         ;;

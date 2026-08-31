@@ -10,7 +10,7 @@ ops:
       - Distribution
     dtypes: [int32]
     accuracy_test: tests/accuracy/test_philox_cuda.py
-    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_ascend_910c.py]
+    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_nvidia.py, tests/accuracy/test_philox_ascend_910c.py]
     performance_test: benchmark/test_random_perf.py
     stages:
       - stable: '0.1'
@@ -25,7 +25,7 @@ ops:
       - Distribution
     dtypes: [float32]
     accuracy_test: tests/accuracy/test_philox_cuda.py
-    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_ascend_910c.py]
+    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_nvidia.py, tests/accuracy/test_philox_ascend_910c.py]
     performance_test: benchmark/test_random_perf.py
     stages:
       - stable: '0.1'
@@ -40,7 +40,7 @@ ops:
       - Distribution
     dtypes: [float64]
     accuracy_test: tests/accuracy/test_philox_cuda.py
-    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_ascend_910c.py]
+    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_nvidia.py, tests/accuracy/test_philox_ascend_910c.py]
     performance_test: benchmark/test_random_perf.py
     stages:
       - stable: '0.1'
@@ -55,7 +55,7 @@ ops:
       - Distribution
     dtypes: [float32]
     accuracy_test: tests/accuracy/test_philox_cuda.py
-    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_ascend_910c.py]
+    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_nvidia.py, tests/accuracy/test_philox_ascend_910c.py]
     performance_test: benchmark/test_random_perf.py
     stages:
       - stable: '0.1'
@@ -70,7 +70,7 @@ ops:
       - Distribution
     dtypes: [float64]
     accuracy_test: tests/accuracy/test_philox_cuda.py
-    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_ascend_910c.py]
+    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_nvidia.py, tests/accuracy/test_philox_ascend_910c.py]
     performance_test: benchmark/test_random_perf.py
     stages:
       - stable: '0.1'
@@ -85,7 +85,7 @@ ops:
       - Distribution
     dtypes: [float32]
     accuracy_test: tests/accuracy/test_philox_cuda.py
-    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_ascend_910c.py]
+    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_nvidia.py, tests/accuracy/test_philox_ascend_910c.py]
     performance_test: benchmark/test_random_perf.py
     stages:
       - stable: '0.1'
@@ -100,7 +100,7 @@ ops:
       - Distribution
     dtypes: [float64]
     accuracy_test: tests/accuracy/test_philox_cuda.py
-    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_ascend_910c.py]
+    platform_accuracy_tests: [tests/accuracy/test_philox_cuda.py, tests/accuracy/test_philox_nvidia.py, tests/accuracy/test_philox_ascend_910c.py]
     performance_test: benchmark/test_random_perf.py
     stages:
       - stable: '0.1'

@@ -10,7 +10,7 @@ on:
         required: true
         default: all
         type: choice
-        options: [all, BI-V150, PPU-ZW810E, Ascend-CANN9]
+        options: [all, NVIDIA-H20, BI-V150, PPU-ZW810E, Ascend-CANN9]
 
 permissions:
   contents: read
