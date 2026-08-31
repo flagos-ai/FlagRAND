@@ -13,10 +13,12 @@ TIMING_SCOPE = (
     "persistent generator and preallocated output; each measured call includes "
     "the Python host API, CUDA enqueue, device execution, and the repeat's final synchronize"
 )
+SPECIALIZATION_WARMUP_CALLS = 16
 
 
 def measure(operation: Callable[[], Any], profile: Profile) -> dict[str, float | int | str]:
-    for _ in range(profile.warmup):
+    warmup_calls = max(profile.warmup, SPECIALIZATION_WARMUP_CALLS)
+    for _ in range(warmup_calls):
         operation()
     torch.cuda.synchronize()
 
@@ -48,6 +50,8 @@ def measure(operation: Callable[[], Any], profile: Profile) -> dict[str, float |
     return {
         "timing_scope": TIMING_SCOPE,
         "formal_metric": "total_ms_median",
+        "specialization_warmup_calls": warmup_calls,
+        "pilot_ms": pilot_ms,
         "timing_calls_per_repeat": calls,
         "enqueue_us_median": statistics.median(enqueue_samples),
         "total_ms_median": statistics.median(total_samples),

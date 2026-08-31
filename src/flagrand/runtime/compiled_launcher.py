@@ -75,6 +75,11 @@ class CachedKernelLauncher:
                 option_values,
             )
             if entry is not None:
+                if self._entries[0] is not entry:
+                    for index, candidate in enumerate(self._entries[1:], start=1):
+                        if candidate is entry:
+                            self._entries.insert(0, self._entries.pop(index))
+                            break
                 self._remember_key(specialization_key, entry)
                 return _launch_entry(entry, grid3, values)
         return self._compile_and_launch(
