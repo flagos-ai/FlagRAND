@@ -50,7 +50,10 @@ def build_api_summary(records: list[dict[str, Any]], distributions: tuple[str, .
             {
                 "distribution": distribution,
                 "points": points,
+                "shape_count": len(points),
                 "api_speedup": sum(point["speedup"] for point in points) / len(points) if points else None,
+                "min_speedup": min((point["speedup"] for point in points), default=None),
+                "max_speedup": max((point["speedup"] for point in points), default=None),
             }
         )
     return summary
@@ -61,7 +64,15 @@ def print_api_summary(summary: list[dict[str, Any]]) -> None:
     for row in summary:
         if row["points"]:
             speedups = ",".join(f"{point['n']}:{point['speedup']:.3f}x" for point in row["points"])
-            LOGGER.info("API %-15s mean=%.3fx points=%s", row["distribution"], row["api_speedup"], speedups)
+            LOGGER.info(
+                "API %-15s shapes=%d mean=%.3fx min=%.3fx max=%.3fx points=%s",
+                row["distribution"],
+                row["shape_count"],
+                row["api_speedup"],
+                row["min_speedup"],
+                row["max_speedup"],
+                speedups,
+            )
         else:
             LOGGER.info("API %-15s mean=N/A", row["distribution"])
 
@@ -127,9 +138,19 @@ def _render_summary(manifest: dict[str, Any], records: list[dict[str, Any]]) -> 
                 speedup="N/A" if speedup is None else f"{float(speedup):.3f}x",
             )
         )
-    lines.extend(("", "## Per-API mean", ""))
+    lines.extend(
+        (
+            "",
+            "## Per-API speedup",
+            "",
+            "| API | Shapes | Mean | Min | Max |",
+            "|---|---:|---:|---:|---:|",
+        )
+    )
     for row in manifest.get("api_speedup_summary", []):
-        value = "N/A" if row["api_speedup"] is None else f"{row['api_speedup']:.3f}x"
-        lines.append(f"- `{row['distribution']}`: {value}")
+        mean = "N/A" if row["api_speedup"] is None else f"{row['api_speedup']:.3f}x"
+        minimum = "N/A" if row["min_speedup"] is None else f"{row['min_speedup']:.3f}x"
+        maximum = "N/A" if row["max_speedup"] is None else f"{row['max_speedup']:.3f}x"
+        lines.append(f"| {row['distribution']} | {row['shape_count']} | {mean} | {minimum} | {maximum} |")
     lines.append("")
     return "\n".join(lines)

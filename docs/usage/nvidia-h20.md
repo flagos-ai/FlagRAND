@@ -57,9 +57,15 @@ Uniform f32/f64 的 offset 0 到 3 及 aligned fast path。若 Uniform 不一致
 .venv/bin/python -m benchmark.run_nvidia --profile matrix --device 0
 ```
 
+矩阵与 BI-V150/CoreX 的完整边界 shape 集对齐：raw32 和 uniform API 各 44 个 shape，覆盖 `1` 到
+`16777216` 以及 `16/32/64/128/256/512/1024/4096/16384/65536/262144/1048576` 的边界邻点；
+normal 和 lognormal API 各 42 个偶数 shape，覆盖相同数量级的合法边界邻点。七个 API 共 300 个
+API-shape 点，每个点分别运行 FlagRAND 和原生 NVIDIA cuRAND。
+
 正式指标为 `total_ms_median`。每个 shape 的 speedup 为
 `NVIDIA cuRAND total_ms_median / FlagRAND total_ms_median`，只在单 API 内聚合，不计算跨 API 平均值，
-也不设置额外性能阈值。
+也不设置额外性能阈值。`manifest.json` 和 `summary.md` 会同时保存每个 API 的 shape 数量、算术平均、
+最小和最大加速比，逐 shape 数据保存在 `records.jsonl` 与 `records.csv`。
 
 ## 统一验收
 

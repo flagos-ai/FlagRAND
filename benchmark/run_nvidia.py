@@ -44,6 +44,8 @@ def main() -> int:
         "acceptance_baseline": "nvidia_curand",
         "profile": args.profile_config.name,
         "shape_map": args.shape_map,
+        "shape_count_map": {distribution: len(shapes) for distribution, shapes in args.shape_map.items()},
+        "total_shape_points": sum(len(shapes) for shapes in args.shape_map.values()),
         "distributions": args.distributions,
         "seed": args.seed,
         "device_index": args.device,
