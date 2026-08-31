@@ -97,7 +97,7 @@ def _ieee_hex_head(values: torch.Tensor, n: int) -> list[str]:
 def run_flagrand_case(distribution: str, n: int, seed: int, profile: Profile) -> dict[str, Any]:
     record = _base_record("flagrand_public", distribution, n)
     implementation_path = (
-        "nvidia_vendor_philox_group4_f64" if distribution.endswith("_f64") else "shared_philox_via_nvidia_dispatch"
+        "nvidia_vendor_philox_group4_f64" if distribution.endswith("_f64") else "nvidia_vendor_philox_direct_32"
     )
     record.update(seed=seed, implementation_path=implementation_path)
     try:

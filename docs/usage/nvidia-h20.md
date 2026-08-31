@@ -1,8 +1,9 @@
 # FlagRAND NVIDIA H20 运行指南
 
 NVIDIA 是 FlagRAND 的标准 CUDA 后端，H20 是首个正式验证硬件。公开 API 通过
-`runtime.backend._nvidia.ops` 独立 dispatch：raw32 和 f32 复用通用 Philox kernel，f64 使用符合
-cuRAND host legacy stream 的 NVIDIA 四输出 kernel、CUDA fast math 和 cached binary launcher。
+`runtime.backend._nvidia.ops` 独立 dispatch：raw32 和 f32 直接调用 CUDA Philox kernel，不再经过通用分布
+选择、dtype 分支和 LibTuner 判断；f64 使用符合 cuRAND host legacy stream 的 NVIDIA 四输出 kernel、
+CUDA fast math 和 cached binary launcher。
 该实现按同一 subsequence 的两个连续 Philox counter 生成四个 double，并按 double 输出推进 offset；
 它是 NVIDIA contract adapter，不影响 Ascend、CoreX 或 PPU 的数学 Philox 路径。
 
