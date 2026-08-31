@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from benchmark.muxi_matrix.config import parse_args
+from benchmark.muxi_matrix.config import PROFILES, parse_args
 from benchmark.muxi_matrix.mcrand import McrandError, _bind_signatures, _check, mcrand_library_path
 
 
@@ -71,3 +71,7 @@ def test_muxi_defaults_to_mcrand_baseline(monkeypatch, tmp_path) -> None:
     assert not args.skip_mcrand
     assert args.skip_ppu_curand
     assert args.skip_ppu_acrand
+
+
+def test_muxi_smoke_prewarms_all_stateful_philox_specializations() -> None:
+    assert PROFILES["smoke"].warmup == 8

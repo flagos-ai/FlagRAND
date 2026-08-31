@@ -155,7 +155,9 @@ PROFILES = {
     "smoke": Profile(
         name="smoke",
         sizes=(4096, 65536, 1048576),
-        warmup=2,
+        # Stateful non-aligned Philox launches rotate through four SHIFT
+        # specializations in both aligned and non-aligned scalar classes.
+        warmup=8,
         repeats=5,
         timing_budget_ms=80.0,
     ),
