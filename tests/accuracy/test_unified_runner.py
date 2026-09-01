@@ -14,6 +14,7 @@ from tools.run_tests import (
     parse_performance_data,
     run_performance,
     supported_operator_ids,
+    worker_env,
 )
 
 
@@ -49,6 +50,23 @@ def test_acceptance_profile_is_translated_for_each_backend(tmp_path) -> None:
         profile_index = command.index("--profile")
         assert command[profile_index + 1] == expected_profile
         assert expected_flags.issubset(command)
+
+
+def test_ascend_worker_maps_masked_physical_device_to_logical_zero(tmp_path) -> None:
+    config = RunnerConfig(
+        output_dir=tmp_path,
+        platform="ascend-cann900",
+        profile="smoke",
+        dump_output=False,
+        timeout=60,
+    )
+
+    env = worker_env(config.platform, 6)
+    command = _performance_command(6, "normal_f32", tmp_path, config)
+
+    assert env["ASCEND_RT_VISIBLE_DEVICES"] == "6"
+    assert env["NPU_VISIBLE_DEVICES"] == "6"
+    assert command[command.index("--device") + 1] == "0"
 
 
 def test_nvidia_accuracy_combines_shared_cuda_and_native_curand_tests() -> None:
@@ -238,6 +256,30 @@ def test_performance_preserves_raw_benchmark_artifacts(tmp_path, monkeypatch) ->
         "summary.json",
         "summary.md",
     }
+
+
+def test_nonzero_performance_exit_is_failed_when_records_are_empty(tmp_path, monkeypatch) -> None:
+    config = RunnerConfig(
+        output_dir=tmp_path,
+        platform="ascend-cann900",
+        profile="smoke",
+        dump_output=False,
+        timeout=60,
+    )
+
+    def fake_run_cmd(*args, **kwargs) -> int:
+        run_dir = tmp_path / "normal_f32" / "performance_raw" / "failed_run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "records.jsonl").write_text("", encoding="utf-8")
+        return 3
+
+    monkeypatch.setattr("tools.run_tests.run_cmd", fake_run_cmd)
+
+    result = run_performance(6, {"id": "normal_f32"}, config)
+
+    assert result["status"] == "Failed"
+    assert result["exit_code"] == 3
+    assert result["reason"] == "benchmark command exited with 3"
 
 
 def test_missing_native_baseline_is_reported_as_skipped(tmp_path) -> None:

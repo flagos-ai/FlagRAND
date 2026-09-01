@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
+from benchmark.ascend_910c.reporting import write_diagnostics
 from benchmark.summary_json import aggregate_delivery_results, build_summary, write_summary_json
 
 DELIVERY_NAMES = ["PHILOX4_32_10", "RAW_BITS", "UNIFORM", "NORMAL", "LOGNORMAL"]
@@ -38,6 +39,27 @@ def test_write_summary_json_creates_flagos_artifact(tmp_path) -> None:
     assert set(payload) == {"timestamp", "env", "result"}
     assert payload["env"] == ENVIRONMENT
     assert payload["result"]["RAW_BITS"]["performance"]["data"]["int32"]["speedup"] == 0.5
+
+
+def test_ascend_failure_diagnostics_do_not_require_validated_environment(tmp_path) -> None:
+    manifest = {
+        "platform": "huawei_ascend_910c",
+        "distributions": ("normal_f32",),
+        "fatal_error": {"type": "RuntimeError", "message": "Invalid device ID"},
+    }
+
+    write_diagnostics(tmp_path, manifest, [])
+
+    assert {path.name for path in tmp_path.iterdir()} == {
+        "manifest.json",
+        "records.jsonl",
+        "records.csv",
+        "summary.md",
+    }
+    assert json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))["fatal_error"] == {
+        "type": "RuntimeError",
+        "message": "Invalid device ID",
+    }
 
 
 def test_summary_matches_flagos_schema_and_latency_semantics() -> None:

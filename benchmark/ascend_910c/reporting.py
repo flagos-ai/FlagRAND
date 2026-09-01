@@ -26,6 +26,15 @@ def write_results(
     manifest: dict[str, Any],
     records: list[dict[str, Any]],
 ) -> None:
+    write_diagnostics(run_directory, manifest, records)
+    write_summary_json(run_directory, manifest, records)
+
+
+def write_diagnostics(
+    run_directory: Path,
+    manifest: dict[str, Any],
+    records: list[dict[str, Any]],
+) -> None:
     (run_directory / "manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False),
         encoding="utf-8",
@@ -38,7 +47,6 @@ def write_results(
         _render_summary(manifest, records),
         encoding="utf-8",
     )
-    write_summary_json(run_directory, manifest, records)
 
 
 def build_api_summary(

@@ -422,7 +422,7 @@ def _performance_command(
         str(raw_dir),
     ]
     if config.platform == "ascend-cann900":
-        command.extend(("--device", str(gpu_id), "--allow-unverified-910c"))
+        command.extend(("--device", "0", "--allow-unverified-910c"))
         if profile == "acceptance":
             command.append("--acceptance-profile")
     elif config.platform == "thead":
@@ -597,9 +597,10 @@ def run_performance(gpu_id: int, operator: dict[str, Any], config: RunnerConfig)
         "data": {},
     }
     result.update(parse_performance_data(operator_id, result_file))
-    if code != 0 and result["status"] == "Passed":
+    if code != 0:
+        if result["status"] != "Failed":
+            result["reason"] = f"benchmark command exited with {code}"
         result["status"] = "Failed"
-        result["reason"] = f"benchmark command exited with {code}"
     return result
 
 

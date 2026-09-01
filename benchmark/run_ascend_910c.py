@@ -18,6 +18,7 @@ from benchmark.ascend_910c.reporting import (
     create_run_directory,
     print_api_summary,
     print_record,
+    write_diagnostics,
     write_results,
 )
 from benchmark.ascend_910c.timing import TIMING_SCOPE
@@ -150,7 +151,7 @@ def main() -> int:
             "message": str(exc),
             "traceback": traceback.format_exc().splitlines(),
         }
-        write_results(run_directory, manifest, records)
+        write_diagnostics(run_directory, manifest, records)
         LOGGER.exception("Fatal error: %s: %s", type(exc).__name__, exc)
         LOGGER.info("Results: %s", run_directory)
         return 3
