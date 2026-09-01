@@ -8,7 +8,7 @@ vendor_info = VendorDescriptor(
     device_query_cmd="mx-smi",
     trademark="MetaX MACA",
     backend_name="maca",
-    cached_binary_launch=False,
+    cached_binary_launch=True,
     portable_f32_math=True,
 )
 
