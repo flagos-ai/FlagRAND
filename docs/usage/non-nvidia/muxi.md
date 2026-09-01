@@ -40,6 +40,11 @@ git rev-parse HEAD
 
 ```text
 FlagRAND/
+├── docker/metax/
+│   ├── Dockerfile
+│   ├── build.sh
+│   ├── entrypoint.sh
+│   └── run.sh
 ├── src/flagrand/
 ├── tests/
 ├── benchmark/muxi_matrix/
@@ -50,31 +55,53 @@ FlagRAND/
 
 不要传输本机 conda 环境、Triton cache、`muxi_results/` 或构建产物。
 
-## 2. 启动沐曦容器
+## 2. 构建并启动沐曦容器
 
-已验证镜像包含 MACA PyTorch/Triton 和原生 mcRAND，但不包含 Git。在上一节新克隆的
-项目根目录中创建持久容器：
+已验证的基础镜像包含 MACA PyTorch/Triton 和原生 mcRAND：
 
-```bash
-export METAX_IMAGE='cr.metax-tech.com/public-ai-release/maca/vllm-metax:0.20.0-maca.ai3.7.0.107-torch2.8-py310-ubuntu22.04-amd64'
-
-docker run -it \
-  --name flagrand-muxi-dev \
-  --device=/dev/mxcd \
-  --device=/dev/dri \
-  -v "$PWD:/workspace/FlagRAND" \
-  -w /workspace/FlagRAND \
-  --entrypoint bash \
-  "$METAX_IMAGE"
+```text
+cr.metax-tech.com/public-ai-release/maca/vllm-metax:0.20.0-maca.ai3.7.0.107-torch2.8-py310-ubuntu22.04-amd64
 ```
 
-后续进入同一容器：
+基础镜像不包含 Git。仓库提供的 `docker/metax/Dockerfile` 以该镜像为基础，保留其中的
+Torch、Triton、MACA runtime 和 mcRAND，只增加 Git/SSH、PyYAML、pytest、FlagRAND 源码及
+固定的验收环境变量。在项目根目录构建开发镜像：
+
+```bash
+export FLAGRAND_METAX_IMAGE='flagrand-metax:c550-maca3.7.0.107'
+bash docker/metax/build.sh
+```
+
+如需使用另一个 MACA 基础镜像：
+
+```bash
+export FLAGRAND_METAX_BASE_IMAGE='<MetaX MACA base image>'
+bash docker/metax/build.sh
+```
+
+首次创建持久开发容器：
+
+```bash
+bash docker/metax/run.sh
+```
+
+`run.sh` 传入 `/dev/mxcd` 和 `/dev/dri`，并将当前项目目录挂载到
+`/workspace/FlagRAND`。默认容器名是 `flagrand-muxi-dev`，后续进入同一容器：
 
 ```bash
 docker start -ai flagrand-muxi-dev
 ```
 
-在容器内固定从当前目录导入，并把缓存也留在项目目录中：
+自定义容器名时，构建和启动示例为：
+
+```bash
+export FLAGRAND_METAX_CONTAINER='flagrand-muxi-dev-wuyu'
+bash docker/metax/run.sh
+```
+
+镜像默认把当前目录源码加入 `PYTHONPATH`，设置 `FLAGRAND_VENDOR=metax`，并把 Triton
+缓存留在项目目录中。入口脚本还会加载 `scripts/ci/backend_env.sh metax`。进入容器后
+这些值等价于：
 
 ```bash
 export PYTHONPATH="$PWD/src:$PWD"
@@ -84,7 +111,7 @@ export PYTHON_BIN=python3
 mkdir -p "$TRITON_CACHE_DIR" "$XDG_CACHE_HOME"
 ```
 
-不建议执行 `pip install triton` 或安装 NVIDIA 版 PyTorch。镜像自带的 MACA
+不要执行 `pip install triton` 或安装 NVIDIA 版 PyTorch。基础镜像自带的 MACA
 PyTorch/Triton 才是这里需要验证的运行时。`flagtree-metax3.6-...-202606-base`
 镜像未提供本流程需要的 `torch`，不用于本项验收。
 

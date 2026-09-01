@@ -200,28 +200,48 @@ cd FlagRAND
 git rev-parse HEAD
 ```
 
-### 5.2 启动 MetaX 容器
+### 5.2 构建并启动 MetaX 容器
 
-已验证的 MetaX C550 运行镜像为：
+仓库中的 MetaX 容器配置位于 `docker/metax/`，结构与 Ascend 容器配置一致：
+
+```text
+docker/metax/
+├── Dockerfile
+├── build.sh
+├── entrypoint.sh
+└── run.sh
+```
+
+Dockerfile 使用以下已验证的 MetaX C550 镜像作为基础镜像：
 
 ```text
 cr.metax-tech.com/public-ai-release/maca/vllm-metax:0.20.0-maca.ai3.7.0.107-torch2.8-py310-ubuntu22.04-amd64
 ```
 
-首次从当前新克隆的项目目录创建持久容器：
+在当前新克隆的项目目录构建 FlagRAND MetaX 开发镜像：
 
 ```bash
-export METAX_IMAGE='cr.metax-tech.com/public-ai-release/maca/vllm-metax:0.20.0-maca.ai3.7.0.107-torch2.8-py310-ubuntu22.04-amd64'
-
-docker run -it \
-  --name flagrand-muxi-dev \
-  --device=/dev/mxcd \
-  --device=/dev/dri \
-  -v "$PWD:/workspace/FlagRAND" \
-  -w /workspace/FlagRAND \
-  --entrypoint bash \
-  "$METAX_IMAGE"
+export FLAGRAND_METAX_IMAGE='flagrand-metax:c550-maca3.7.0.107'
+bash docker/metax/build.sh
 ```
+
+`docker/metax/Dockerfile` 保留基础镜像中的 MACA PyTorch、Triton、mcRAND 和运行时，仅增加
+Git/SSH、PyYAML、pytest、FlagRAND 源码及验收环境变量。需要替换基础镜像时可设置：
+
+```bash
+export FLAGRAND_METAX_BASE_IMAGE='<MetaX MACA base image>'
+bash docker/metax/build.sh
+```
+
+首次创建持久开发容器：
+
+```bash
+bash docker/metax/run.sh
+```
+
+启动脚本把 `/dev/mxcd`、`/dev/dri` 传入容器，将当前源码挂载到
+`/workspace/FlagRAND`，默认容器名为 `flagrand-muxi-dev`。可通过
+`FLAGRAND_METAX_CONTAINER` 修改名称。
 
 后续进入同一容器：
 
@@ -229,7 +249,7 @@ docker run -it \
 docker start -ai flagrand-muxi-dev
 ```
 
-验收使用镜像预装的 MACA PyTorch/Triton，不在容器内安装 NVIDIA 版 PyTorch 或替换
+验收使用基础镜像预装的 MACA PyTorch/Triton，不在容器内安装 NVIDIA 版 PyTorch 或替换
 Triton。`flagtree-metax3.6-...-202606-base` 镜像未提供本流程需要的 `torch`，不用于本项验收。
 
 ### 5.3 检查运行环境和 mcRAND
@@ -244,7 +264,14 @@ export PYTHON_BIN=python3
 mkdir -p "$TRITON_CACHE_DIR" "$XDG_CACHE_HOME"
 ```
 
-检查 MetaX C550、Torch 和 Triton target：
+加载 MetaX 后端环境，检查 MetaX C550、Torch、Triton target 和 mcRAND：
+
+```bash
+source scripts/ci/backend_env.sh metax
+bash tools/gpu_check_metax.sh
+```
+
+也可以直接打印当前 Python 环境：
 
 ```bash
 python3 - <<'PY'
