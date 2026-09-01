@@ -25,6 +25,12 @@ class _LaunchEntry:
     launch_metadata: object
 
 
+@dataclass
+class _LegacyLaunchEntry:
+    compiled: Any
+    device: int
+
+
 class CachedKernelLauncher:
     """Reuse a compiled Triton specialization while resolving each call's stream."""
 
@@ -42,7 +48,8 @@ class CachedKernelLauncher:
         self._max_entries = max_entries
         self._entries: list[_LaunchEntry] = []
         self._keyed_entries: OrderedDict[object, _LaunchEntry] = OrderedDict()
-        self._legacy_entries: OrderedDict[object, Any] = OrderedDict()
+        self._legacy_entries: OrderedDict[object, _LegacyLaunchEntry] = OrderedDict()
+        self._legacy_keyed_entries: OrderedDict[object, _LegacyLaunchEntry] = OrderedDict()
 
     def launch(
         self,
@@ -60,6 +67,7 @@ class CachedKernelLauncher:
                 args,
                 constexpr_values,
                 option_values,
+                specialization_key,
             )
         values = args + constexpr_values
         if not _requires_regular_jit(self._kernel):
@@ -97,7 +105,14 @@ class CachedKernelLauncher:
         args: tuple[object, ...],
         constexpr_values: tuple[object, ...],
         option_values: tuple[object, ...],
+        specialization_key: object | None,
     ) -> Any:
+        if specialization_key is not None:
+            entry = self._legacy_keyed_entries.get(specialization_key)
+            if entry is not None:
+                self._legacy_keyed_entries.move_to_end(specialization_key)
+                return _launch_legacy_entry(entry, grid, args)
+
         kwargs = dict(zip(self._constexpr_names, constexpr_values))
         kwargs.update(zip(self._option_names, option_values))
         kwargs["debug"] = getattr(self._kernel, "debug", False)
@@ -112,32 +127,29 @@ class CachedKernelLauncher:
             tuple(bound_constexprs),
             tuple(sorted(excess_kwargs.items())),
         )
-        compiled = self._legacy_entries.get(key)
-        if compiled is None:
+        entry = self._legacy_entries.get(key)
+        if entry is None:
             compiled = self._kernel[grid](*args, **kwargs)
             compiled._init_handles()
-            self._legacy_entries[key] = compiled
+            entry = _LegacyLaunchEntry(compiled=compiled, device=device)
+            self._legacy_entries[key] = entry
             self._legacy_entries.move_to_end(key)
             while len(self._legacy_entries) > self._max_entries:
                 self._legacy_entries.popitem(last=False)
+            self._remember_legacy_key(specialization_key, entry)
             return compiled
 
         self._legacy_entries.move_to_end(key)
-        stream = driver.active.get_current_stream(device)
-        launch_metadata = compiled.launch_metadata(grid, stream, *non_constexpr_values)
-        compiled.run(
-            grid[0],
-            grid[1],
-            grid[2],
-            stream,
-            compiled.function,
-            compiled.packed_metadata,
-            launch_metadata,
-            compiled.launch_enter_hook,
-            compiled.launch_exit_hook,
-            *non_constexpr_values,
-        )
-        return compiled
+        self._remember_legacy_key(specialization_key, entry)
+        return _launch_legacy_entry(entry, grid, non_constexpr_values)
+
+    def _remember_legacy_key(self, key: object | None, entry: _LegacyLaunchEntry) -> None:
+        if key is None:
+            return
+        self._legacy_keyed_entries[key] = entry
+        self._legacy_keyed_entries.move_to_end(key)
+        while len(self._legacy_keyed_entries) > self._max_entries:
+            self._legacy_keyed_entries.popitem(last=False)
 
     def _compile_and_launch(
         self,
@@ -209,6 +221,31 @@ def _launch_entry(
         entry.launch_metadata,
         None,
         None,
+        *values,
+    )
+    return compiled
+
+
+def _launch_legacy_entry(
+    entry: _LegacyLaunchEntry,
+    grid: tuple[int, int, int],
+    values: tuple[object, ...],
+) -> Any:
+    compiled = entry.compiled
+    stream = driver.active.get_current_stream(entry.device)
+    launch_enter_hook = getattr(compiled, "launch_enter_hook", None)
+    launch_exit_hook = getattr(compiled, "launch_exit_hook", None)
+    launch_metadata = compiled.launch_metadata(grid, stream, *values) if launch_enter_hook is not None else None
+    compiled.run(
+        grid[0],
+        grid[1],
+        grid[2],
+        stream,
+        compiled.function,
+        compiled.packed_metadata,
+        launch_metadata,
+        launch_enter_hook,
+        launch_exit_hook,
         *values,
     )
     return compiled

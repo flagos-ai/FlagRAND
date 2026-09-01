@@ -145,6 +145,62 @@ _NORMAL_LAUNCHER = CachedKernelLauncher(
 )
 
 
+def generate_huawei910c_raw_uniform_f32_fast(
+    out: torch.Tensor,
+    generator: Any,
+    *,
+    uniform: bool,
+    num_warps: int,
+) -> torch.Tensor:
+    """Launch the common-case 910C raw or Uniform kernel with minimal host work."""
+
+    count = out.numel()
+    if count == 0:
+        return out
+
+    seed = int(generator.seed)
+    offset = int(generator.offset)
+    counter_low = offset & 0xFFFFFFFF
+
+    if count > (1 << 32) - counter_low:
+        return generate_huawei910c(
+            out,
+            generator,
+            distribution="uniform_f32" if uniform else "raw32",
+            num_warps=num_warps,
+        )
+
+    seed_lo = _signed_i32(seed & 0xFFFFFFFF)
+    seed_hi = (seed >> 32) & 0xFFFFFFFF
+    epoch = offset >> 32
+    epoch_key = (epoch * 0x9E3779B9) & 0xFFFFFFFF
+    effective_seed_hi = _signed_i32(seed_hi ^ epoch_key)
+    counter_low = _signed_i32(counter_low)
+    block = UNIFORM_BLOCK if uniform else RAW_BLOCK
+
+    _RAW_UNIFORM_LAUNCHER.launch(
+        (count + block - 1) // block,
+        (out, count, seed_lo, effective_seed_hi, counter_low),
+        (uniform, block),
+        (num_warps,),
+        specialization_key=(
+            out.device,
+            out.dtype,
+            out.data_ptr() % 16 == 0,
+            count,
+            seed_lo,
+            effective_seed_hi,
+            counter_low == 1,
+            counter_low % 16 == 0,
+            uniform,
+            block,
+            num_warps,
+        ),
+    )
+    generator.offset = offset + count
+    return out
+
+
 def generate_huawei910c_normal_f32_fast(
     out: torch.Tensor,
     generator: Any,
@@ -188,7 +244,7 @@ def generate_huawei910c_normal_f32_fast(
     block = LOGNORMAL_BLOCK if lognormal else NORMAL_BLOCK
 
     _NORMAL_LAUNCHER.launch(
-        (triton.cdiv(count, block),),
+        (count + block - 1) // block,
         (
             out,
             count,
@@ -200,6 +256,21 @@ def generate_huawei910c_normal_f32_fast(
         ),
         (lognormal, block),
         (num_warps,),
+        specialization_key=(
+            out.device,
+            out.dtype,
+            out.data_ptr() % 16 == 0,
+            count,
+            seed_lo,
+            effective_seed_hi,
+            counter_low == 1,
+            counter_low % 16 == 0,
+            float(mean),
+            float(stddev),
+            lognormal,
+            block,
+            num_warps,
+        ),
     )
     generator.offset = offset + count
     return out
@@ -497,4 +568,5 @@ __all__ = [
     "generate_huawei910c",
     "generate_huawei910c_normal_f32_fast",
     "generate_huawei910c_native_f64",
+    "generate_huawei910c_raw_uniform_f32_fast",
 ]

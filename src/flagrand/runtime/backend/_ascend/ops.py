@@ -4,9 +4,9 @@ import torch
 
 from flagrand._curand_philox_fast_path import _prepare
 from flagrand.ascend.huawei910c import (
-    generate_huawei910c,
     generate_huawei910c_native_f64,
     generate_huawei910c_normal_f32_fast,
+    generate_huawei910c_raw_uniform_f32_fast,
 )
 
 _DEFAULT_BLOCK_SIZE = 64
@@ -22,10 +22,10 @@ def try_generate_raw(
         return False
     engine, _, num_warps, _ = prepared
     if out.numel():
-        generate_huawei910c(
+        generate_huawei910c_raw_uniform_f32_fast(
             out,
             engine,
-            distribution="raw32",
+            uniform=False,
             num_warps=num_warps,
         )
     return True
@@ -51,10 +51,10 @@ def try_generate_uniform(
             stddev=1.0,
         )
     else:
-        generate_huawei910c(
+        generate_huawei910c_raw_uniform_f32_fast(
             out,
             engine,
-            distribution="uniform_f32",
+            uniform=True,
             num_warps=num_warps,
         )
     return True
