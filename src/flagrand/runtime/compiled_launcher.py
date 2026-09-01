@@ -10,7 +10,7 @@ except ImportError:
     knobs = None
 from triton.runtime.driver import driver
 
-from flagrand.runtime.backend import supports_cached_binary_launch
+from flagrand.runtime.backend import current_backend, supports_cached_binary_launch
 from flagrand.runtime.specialization import bind_specialization, find_matching_entry, value_tokens
 
 
@@ -54,7 +54,10 @@ class CachedKernelLauncher:
         specialization_key: object | None = None,
     ) -> Any:
         grid3 = _normalize_grid(grid)
-        if knobs is None and getattr(self._kernel, "binder", None) is not None:
+        legacy_binder = current_backend() == "maca" or (
+            knobs is None and getattr(self._kernel, "binder", None) is not None
+        )
+        if legacy_binder:
             return self._launch_legacy(
                 grid3,
                 args,
@@ -93,6 +96,8 @@ class CachedKernelLauncher:
         constexpr_values: tuple[object, ...],
         option_values: tuple[object, ...],
     ) -> Any:
+        if self._kernel.binder is None:
+            self._kernel.create_binder()
         kwargs = dict(zip(self._constexpr_names, constexpr_values))
         kwargs.update(zip(self._option_names, option_values))
         kwargs["debug"] = getattr(self._kernel, "debug", False)
