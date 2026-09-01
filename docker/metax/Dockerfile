@@ -10,6 +10,7 @@ RUN apt-get update \
         ca-certificates \
         git \
         openssh-client \
+        python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m pip install --no-cache-dir \
