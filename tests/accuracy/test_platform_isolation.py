@@ -70,3 +70,17 @@ def test_specialized_ops_live_under_vendor_backends() -> None:
     assert any(module.startswith("flagrand.ascend") for module in _imported_modules(ASCEND_OPS_SOURCE))
     assert any(module.startswith("flagrand.corex") for module in _imported_modules(ILUVATAR_OPS_SOURCE))
     assert any(module.startswith("flagrand.nvidia") for module in _imported_modules(NVIDIA_OPS_SOURCE))
+
+
+def test_nvidia_backend_owns_the_complete_public_dispatch() -> None:
+    tree = ast.parse(NVIDIA_OPS_SOURCE.read_text(), filename=str(NVIDIA_OPS_SOURCE))
+    functions = {node.name for node in tree.body if isinstance(node, ast.FunctionDef)}
+    assert {
+        "generate",
+        "generate_uniform",
+        "generate_uniform_double",
+        "generate_normal",
+        "generate_normal_double",
+        "generate_lognormal",
+        "generate_lognormal_double",
+    }.issubset(functions)

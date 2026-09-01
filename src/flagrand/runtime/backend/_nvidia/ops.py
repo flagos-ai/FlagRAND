@@ -210,7 +210,7 @@ def _prepare_nvidia(
 
 def _unsupported(op_name: str) -> None:
     raise ValueError(
-        f"{op_name}: this preview requires a Philox CurandGenerator, a "
+        f"{op_name}: requires a Philox CurandGenerator, a "
         "contiguous CUDA/NPU output, and only block_size/num_warps options."
     )
 

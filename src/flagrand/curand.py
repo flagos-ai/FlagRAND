@@ -144,7 +144,7 @@ def _require_dtype(out: torch.Tensor, dtype: torch.dtype, op_name: str) -> None:
 def _require_handled(handled: bool, op_name: str) -> None:
     if not handled:
         raise ValueError(
-            f"{op_name}: this preview requires a Philox CurandGenerator, a "
+            f"{op_name}: requires a Philox CurandGenerator, a "
             "contiguous CUDA/NPU output, and only block_size/num_warps options."
         )
 

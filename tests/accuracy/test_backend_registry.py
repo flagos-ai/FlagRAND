@@ -32,6 +32,13 @@ def test_public_curand_uses_selected_vendor_override() -> None:
     assert curand.try_generate_uniform.__module__ == expected_module
     assert curand.try_generate_normal.__module__ == expected_module
     public_module = "flagrand.runtime.backend._nvidia.ops" if device.vendor_name == "nvidia" else "flagrand.curand"
-    assert curand.generate.__module__ == public_module
-    assert curand.generate_uniform.__module__ == public_module
-    assert curand.generate_normal.__module__ == public_module
+    for name in (
+        "generate",
+        "generate_uniform",
+        "generate_uniform_double",
+        "generate_normal",
+        "generate_normal_double",
+        "generate_lognormal",
+        "generate_lognormal_double",
+    ):
+        assert getattr(curand, name).__module__ == public_module

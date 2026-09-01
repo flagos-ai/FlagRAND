@@ -143,10 +143,10 @@ export SUMMARY="$PWD/ascend_910c_results/ci_${FLAGRAND_RUN_ID}/summary.json"
 
 ### 4.1 获取源码
 
-克隆待验证的 NVIDIA 集成分支，并记录提交。
+克隆远端 `main`，并记录本次验收的代码版本。
 
 ```bash
-git clone --branch codex/nvidia-h20-integration --single-branch \
+git clone --branch main --single-branch \
   git@github.com:flagos-ai/FlagRAND.git FlagRAND
 cd FlagRAND
 git rev-parse HEAD

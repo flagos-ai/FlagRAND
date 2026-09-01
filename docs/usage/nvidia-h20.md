@@ -64,8 +64,9 @@ API-shape 点，每个点分别运行 FlagRAND 和原生 NVIDIA cuRAND。
 
 正式指标为 `total_ms_median`。每个 shape 的 speedup 为
 `NVIDIA cuRAND total_ms_median / FlagRAND total_ms_median`，只在单 API 内聚合，不计算跨 API 平均值，
-也不设置额外性能阈值。`manifest.json` 和 `summary.md` 会同时保存每个 API 的 shape 数量、算术平均、
-最小和最大加速比，逐 shape 数据保存在 `records.jsonl` 与 `records.csv`。
+H20 合并验收要求七个 API 各自的 shape 算术平均 speedup 不低于 `0.95x`。`manifest.json` 和
+`summary.md` 会同时保存每个 API 的 shape 数量、算术平均、最小和最大加速比，逐 shape 数据保存在
+`records.jsonl` 与 `records.csv`。
 
 计时前会连续执行 16 次 specialization warmup，覆盖四种 Philox shift 及 Triton 标量 specialization；
 pilot 只在预热完成后决定每轮调用数，因此 JIT 编译时间不会进入性能样本或把短 shape 错判为单次计时。

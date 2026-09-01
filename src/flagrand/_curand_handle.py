@@ -35,7 +35,7 @@ def create_generator(
 ) -> CurandGenerator:
     resolved = resolve_rng_type(rng_type)
     if resolved != CURAND_RNG_PSEUDO_PHILOX4_32_10:
-        raise ValueError(f"Unsupported cuRAND rng_type in this preview: {rng_type}")
+        raise ValueError(f"Unsupported cuRAND rng_type: {rng_type}")
     seed_value = _validate_seed(seed)
     offset_value = _validate_offset(offset)
     return CurandGenerator(

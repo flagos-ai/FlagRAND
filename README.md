@@ -5,7 +5,8 @@ FlagRAND provides a Philox4x32-10 host API implemented with Triton. The public s
 ## Layout
 
 - `src/flagrand/ops/philox.py`: canonical operator facade.
-- `src/flagrand/rng`, `fused`, `runtime`, `ascend`: implementation and backend support.
+- `src/flagrand/rng`, `fused`, `runtime`: shared implementation and backend dispatch.
+- `src/flagrand/ascend`, `corex`, `nvidia`: vendor contract adapters and kernels.
 - `conf/operators.yaml`: operator registry and required test coverage.
 - `tests/accuracy`: contract, deterministic and statistical correctness tests.
 - `benchmark`: end-to-end NVIDIA, PPU, Muxi and Ascend 910C performance matrices.
