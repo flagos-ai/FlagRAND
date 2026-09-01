@@ -33,7 +33,10 @@ def test_acceptance_profile_is_translated_for_each_backend(tmp_path) -> None:
             },
         ),
         "thead": ("full", {"--skip-torch-reference", "--acceptance-profile"}),
-        "ascend-cann900": ("full", {"--acceptance-profile"}),
+        "ascend-cann900": (
+            "full",
+            {"--allow-non-cann9", "--allow-unverified-910c", "--acceptance-profile"},
+        ),
         "iluvatar": ("matrix", set()),
     }
 

@@ -422,7 +422,7 @@ def _performance_command(
         str(raw_dir),
     ]
     if config.platform == "ascend-cann900":
-        command.extend(("--device", "0", "--allow-unverified-910c"))
+        command.extend(("--device", "0", "--allow-non-cann9", "--allow-unverified-910c"))
         if profile == "acceptance":
             command.append("--acceptance-profile")
     elif config.platform == "thead":
