@@ -4,33 +4,33 @@
 `maca / arch=80 / warp_size=64`。性能 baseline 为沐曦原生 mcRAND，动态库路径为
 `/opt/maca/lib/libmcrand.so`，mcRAND 版本值为 `100000`。
 
-计时使用持久 generator 和预分配输出张量，编译预热不计时。每个 shape 预热 8 次、
-正式重复 5 组、单组目标计时预算 80 ms。正式指标为 `total_ms_median`，加速比计算式为
+计时使用持久 generator 和预分配输出张量，编译预热不计时。每个 shape 预热 5 次、
+正式重复 11 组、单组目标计时预算 200 ms。正式指标为 `total_ms_median`，加速比计算式为
 `mcRAND total_ms_median / FlagRAND total_ms_median`；大于 1.0x 表示 FlagRAND 更快。
 API 平均加速比是该 API 全部实测 shape 加速比的算术平均，不计算跨 API 总平均。
 
 | API | dtype | shape 数 | API 平均加速比 | 最小加速比 | 最大加速比 |
 |---|---:|---:|---:|---:|---:|
-| raw32 | int32 | 16 | 1.189x | 1.131x | 1.314x |
-| uniform_f32 | float32 | 16 | 1.163x | 1.067x | 1.281x |
-| uniform_f64 | float64 | 16 | 1.082x | 0.994x | 1.297x |
-| normal_f32 | float32 | 17 | 0.833x | 0.760x | 0.946x |
-| normal_f64 | float64 | 11 | 0.876x | 0.805x | 1.065x |
-| lognormal_f32 | float32 | 17 | 0.840x | 0.769x | 0.972x |
-| lognormal_f64 | float64 | 15 | 0.899x | 0.865x | 0.987x |
+| raw32 | int32 | 16 | 1.355x | 1.029x | 1.530x |
+| uniform_f32 | float32 | 16 | 1.398x | 1.008x | 1.571x |
+| uniform_f64 | float64 | 16 | 1.354x | 1.265x | 1.622x |
+| normal_f32 | float32 | 17 | 1.080x | 1.034x | 1.250x |
+| normal_f64 | float64 | 11 | 1.180x | 1.145x | 1.302x |
+| lognormal_f32 | float32 | 17 | 1.111x | 1.056x | 1.313x |
+| lognormal_f64 | float64 | 15 | 1.215x | 0.988x | 1.283x |
 
-验收目标范围为 `0.95x–1.50x`。raw32、uniform_f32、uniform_f64 的 API 平均加速比
-位于目标范围内；本次验收汇总为 3/7 APIs in target range。
+验收目标范围为 `0.95x–1.50x`，按每个 API 全部 shape 的平均加速比判定。本次验收汇总为
+7/7 APIs in target range。
 
 | API | 最小加速比 shape | 最小加速比 | 最大加速比 shape | 最大加速比 |
 |---|---:|---:|---:|---:|
-| raw32 | N=1,025 | 1.131x | N=1,048,576 | 1.314x |
-| uniform_f32 | N=1,023 | 1.067x | N=1,048,576 | 1.281x |
-| uniform_f64 | N=1,023 | 0.994x | N=1,048,577 | 1.297x |
-| normal_f32 | N=126 | 0.760x | N=1,048,576 | 0.946x |
-| normal_f64 | N=128 | 0.805x | N=262,144 | 1.065x |
-| lognormal_f32 | N=1,022 | 0.769x | N=1,048,574、1,048,576 | 0.972x |
-| lognormal_f64 | N=4,096 | 0.865x | N=262,144 | 0.987x |
+| raw32 | N=65,537 | 1.029x | N=4,096 | 1.530x |
+| uniform_f32 | N=128 | 1.008x | N=1,048,576 | 1.571x |
+| uniform_f64 | N=1,023 | 1.265x | N=1,048,577 | 1.622x |
+| normal_f32 | N=4,098 | 1.034x | N=1,048,578 | 1.250x |
+| normal_f64 | N=4,098 | 1.145x | N=262,144 | 1.302x |
+| lognormal_f32 | N=126 | 1.056x | N=1,048,574 | 1.313x |
+| lognormal_f64 | N=262,144 | 0.988x | N=65,536 | 1.283x |
 
 # 第二节 正确性统计
 
@@ -57,5 +57,9 @@ preflight 已通过 seed=0 的 raw32 Philox golden vector，以及七类 API 的
 | normal_f64 | 每两个 uniform_f64 通过 Box–Muller 生成两个 double 正态结果；标准分布 `mean=0、stddev=1` 使用编译期分支。 |
 | lognormal_f32 | 复用 normal_f32 的融合 Philox + Box–Muller 路径，在同一个 kernel 内对结果执行 `exp`。 |
 | lognormal_f64 | 复用 normal_f64 路径，在同一个 kernel 内对正态结果执行 `exp`。 |
+| kernel launch | MACA Triton 首次编译后缓存 `CompiledKernel`；后续调用通过旧版 binder specialization key 命中并直接执行 `CompiledKernel.run`，每次调用重新读取当前 stream。 |
 | mcRAND baseline | Python 通过 ctypes 调用 `mcrandCreateGenerator`、seed/offset/stream 设置函数和七类生成函数；输出直接写入当前 CUDA-compatible Torch tensor。 |
 | benchmark | FlagRAND 与 mcRAND 均复用 generator、预分配输出并绑定当前 Torch stream；smoke 预热覆盖非对齐 Philox 的 4 个 SHIFT 与 scalar specialization 状态。 |
+
+本次正式结果目录为
+`/workspace/FlagRAND/muxi_results/20260901_143427_acceptance_full_philox`。

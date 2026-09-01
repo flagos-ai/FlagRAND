@@ -221,7 +221,8 @@ python3 -m benchmark.run_muxi \
 
 兼容逻辑在 Triton target backend 为 `maca` 时有效：
 
-1. 强制使用标准 Triton JIT launch，绕开依赖 NVIDIA Triton 私有 launcher ABI 的缓存启动器；
+1. 首次 JIT 编译后缓存 `CompiledKernel`，通过 MACA Triton 的旧版 binder specialization key
+   复用编译结果，并直接调用 `CompiledKernel.run`；
 2. 将 f32 Box-Muller 的 NVIDIA inline PTX `sin/cos` 替换成 `tl.sin/tl.cos`；
 3. 保留 Philox counter、raw 到 uniform 的映射、f64 多项式路径和 Host API 状态语义。
 
