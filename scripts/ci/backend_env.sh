@@ -23,7 +23,7 @@ case "$BACKEND" in
         ;;
     ascend-cann900)
         set +u
-        source /usr/local/Ascend/cann/set_env.sh
+        source /usr/local/Ascend/cann-9.0.0/set_env.sh
         set -u
         export FLAGRAND_VENDOR=ascend
         ;;
