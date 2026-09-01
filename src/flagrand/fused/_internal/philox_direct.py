@@ -95,6 +95,7 @@ def _philox_normal_f32_kernel(
     stddev,
     BLOCK: tl.constexpr,
     PORTABLE_MATH: tl.constexpr,
+    STANDARD: tl.constexpr,
 ):
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
@@ -113,10 +114,16 @@ def _philox_normal_f32_kernel(
         n0, n1 = uniform_to_normal_fast_f32(u0, u1)
         n2, n3 = uniform_to_normal_fast_f32(u2, u3)
 
-    y0 = mean + stddev * n0
-    y1 = mean + stddev * n1
-    y2 = mean + stddev * n2
-    y3 = mean + stddev * n3
+    if STANDARD:
+        y0 = n0
+        y1 = n1
+        y2 = n2
+        y3 = n3
+    else:
+        y0 = mean + stddev * n0
+        y1 = mean + stddev * n1
+        y2 = mean + stddev * n2
+        y3 = mean + stddev * n3
 
     y01 = tl.join(y0, y1)
     y23 = tl.join(y2, y3)
@@ -137,6 +144,7 @@ def _philox_normal_f32_generic_kernel(
     SHIFT: tl.constexpr,
     BLOCK: tl.constexpr,
     PORTABLE_MATH: tl.constexpr,
+    STANDARD: tl.constexpr,
 ):
     pid = tl.program_id(0)
     group = pid * BLOCK + tl.arange(0, BLOCK)
@@ -154,10 +162,16 @@ def _philox_normal_f32_generic_kernel(
         n0, n1 = uniform_to_normal_fast_f32(u0, u1)
         n2, n3 = uniform_to_normal_fast_f32(u2, u3)
 
-    y0 = mean + stddev * n0
-    y1 = mean + stddev * n1
-    y2 = mean + stddev * n2
-    y3 = mean + stddev * n3
+    if STANDARD:
+        y0 = n0
+        y1 = n1
+        y2 = n2
+        y3 = n3
+    else:
+        y0 = mean + stddev * n0
+        y1 = mean + stddev * n1
+        y2 = mean + stddev * n2
+        y3 = mean + stddev * n3
 
     base = group * 4
     tl.store(out_ptr + base + 0, y0, mask=group_mask & (base + 0 < n))
@@ -177,6 +191,7 @@ def _philox_lognormal_f32_kernel(
     stddev,
     BLOCK: tl.constexpr,
     PORTABLE_MATH: tl.constexpr,
+    STANDARD: tl.constexpr,
 ):
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
@@ -195,10 +210,16 @@ def _philox_lognormal_f32_kernel(
         n0, n1 = uniform_to_normal_fast_f32(u0, u1)
         n2, n3 = uniform_to_normal_fast_f32(u2, u3)
 
-    y0 = tl.exp(mean + stddev * n0)
-    y1 = tl.exp(mean + stddev * n1)
-    y2 = tl.exp(mean + stddev * n2)
-    y3 = tl.exp(mean + stddev * n3)
+    if STANDARD:
+        y0 = tl.exp(n0)
+        y1 = tl.exp(n1)
+        y2 = tl.exp(n2)
+        y3 = tl.exp(n3)
+    else:
+        y0 = tl.exp(mean + stddev * n0)
+        y1 = tl.exp(mean + stddev * n1)
+        y2 = tl.exp(mean + stddev * n2)
+        y3 = tl.exp(mean + stddev * n3)
 
     y01 = tl.join(y0, y1)
     y23 = tl.join(y2, y3)
@@ -219,6 +240,7 @@ def _philox_lognormal_f32_generic_kernel(
     SHIFT: tl.constexpr,
     BLOCK: tl.constexpr,
     PORTABLE_MATH: tl.constexpr,
+    STANDARD: tl.constexpr,
 ):
     pid = tl.program_id(0)
     group = pid * BLOCK + tl.arange(0, BLOCK)
@@ -236,10 +258,16 @@ def _philox_lognormal_f32_generic_kernel(
         n0, n1 = uniform_to_normal_fast_f32(u0, u1)
         n2, n3 = uniform_to_normal_fast_f32(u2, u3)
 
-    y0 = tl.exp(mean + stddev * n0)
-    y1 = tl.exp(mean + stddev * n1)
-    y2 = tl.exp(mean + stddev * n2)
-    y3 = tl.exp(mean + stddev * n3)
+    if STANDARD:
+        y0 = tl.exp(n0)
+        y1 = tl.exp(n1)
+        y2 = tl.exp(n2)
+        y3 = tl.exp(n3)
+    else:
+        y0 = tl.exp(mean + stddev * n0)
+        y1 = tl.exp(mean + stddev * n1)
+        y2 = tl.exp(mean + stddev * n2)
+        y3 = tl.exp(mean + stddev * n3)
 
     base = group * 4
     tl.store(out_ptr + base + 0, y0, mask=group_mask & (base + 0 < n))
@@ -300,6 +328,7 @@ if HAS_LIBTUNER:
         mean,
         stddev,
         PORTABLE_MATH: tl.constexpr,
+        STANDARD: tl.constexpr,
         BLOCK: tl.constexpr,
     ):
         pid = tl.program_id(0)
@@ -319,10 +348,16 @@ if HAS_LIBTUNER:
             n0, n1 = uniform_to_normal_fast_f32(u0, u1)
             n2, n3 = uniform_to_normal_fast_f32(u2, u3)
 
-        y0 = mean + stddev * n0
-        y1 = mean + stddev * n1
-        y2 = mean + stddev * n2
-        y3 = mean + stddev * n3
+        if STANDARD:
+            y0 = n0
+            y1 = n1
+            y2 = n2
+            y3 = n3
+        else:
+            y0 = mean + stddev * n0
+            y1 = mean + stddev * n1
+            y2 = mean + stddev * n2
+            y3 = mean + stddev * n3
 
         y01 = tl.join(y0, y1)
         y23 = tl.join(y2, y3)
@@ -345,19 +380,19 @@ _PHILOX_UNIFORM_F32_GENERIC_LAUNCHER = CachedKernelLauncher(
 )
 _PHILOX_NORMAL_F32_LAUNCHER = CachedKernelLauncher(
     _philox_normal_f32_kernel,
-    constexpr_names=("BLOCK", "PORTABLE_MATH"),
+    constexpr_names=("BLOCK", "PORTABLE_MATH", "STANDARD"),
 )
 _PHILOX_NORMAL_F32_GENERIC_LAUNCHER = CachedKernelLauncher(
     _philox_normal_f32_generic_kernel,
-    constexpr_names=("SHIFT", "BLOCK", "PORTABLE_MATH"),
+    constexpr_names=("SHIFT", "BLOCK", "PORTABLE_MATH", "STANDARD"),
 )
 _PHILOX_LOGNORMAL_F32_LAUNCHER = CachedKernelLauncher(
     _philox_lognormal_f32_kernel,
-    constexpr_names=("BLOCK", "PORTABLE_MATH"),
+    constexpr_names=("BLOCK", "PORTABLE_MATH", "STANDARD"),
 )
 _PHILOX_LOGNORMAL_F32_GENERIC_LAUNCHER = CachedKernelLauncher(
     _philox_lognormal_f32_generic_kernel,
-    constexpr_names=("SHIFT", "BLOCK", "PORTABLE_MATH"),
+    constexpr_names=("SHIFT", "BLOCK", "PORTABLE_MATH", "STANDARD"),
 )
 
 
@@ -489,6 +524,7 @@ def _launch_normal_like_f32(
         return
 
     base_counter = offset_val // 4
+    standard = mean == 0.0 and stddev == 1.0
     if offset_val % 4 == 0 and n % 4 == 0:
         n_counters = n // 4
         if use_libtuner_kernel and not lognormal:
@@ -503,6 +539,7 @@ def _launch_normal_like_f32(
                 mean,
                 stddev,
                 PORTABLE_MATH=portable_math,
+                STANDARD=standard,
             )
         else:
             grid = triton.cdiv(n_counters, block_size)
@@ -510,7 +547,7 @@ def _launch_normal_like_f32(
             launcher.launch(
                 grid,
                 (out, seed_val, base_counter, n, n_counters, mean, stddev),
-                (block_size, portable_math),
+                (block_size, portable_math, standard),
                 (num_warps,),
             )
     else:
@@ -520,7 +557,7 @@ def _launch_normal_like_f32(
         launcher.launch(
             grid,
             (out, seed_val, base_counter, n, n_groups, mean, stddev),
-            (offset_val % 4, block_size, portable_math),
+            (offset_val % 4, block_size, portable_math, standard),
             (num_warps,),
         )
 
