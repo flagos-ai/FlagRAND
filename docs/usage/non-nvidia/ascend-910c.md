@@ -64,7 +64,7 @@ bash scripts/ci/run_ascend_910c_ci.sh
 
 正式指标为 `total_ms_median`，包含 Python public API、下发、设备执行和末尾同步。每个 repeat 前后同步，首次编译由 warmup 排除；`device_ms_median` 和 enqueue 只作诊断。每个 shape 的 speedup 为 `CANN total_ms_median / FlagRAND total_ms_median`，只在单 API 内聚合，不计算跨 API 平均值。
 
-结果保存在 `ascend_910c_results/<timestamp>_<profile>_910c_philox/`，包括 `manifest.json`、`records.jsonl`、`records.csv` 和 `summary.md`。正式回传必须保留整个目录，不要只保存终端输出。
+结果保存在 `ascend_910c_results/<timestamp>_<profile>_910c_philox/`，包括 `manifest.json`、`records.jsonl`、`records.csv`、`summary.json` 和 `summary.md`。正式回传必须保留整个目录，不要只保存终端输出。
 
 ## 常见故障
 

@@ -172,7 +172,7 @@ def test_performance_preserves_raw_benchmark_artifacts(tmp_path, monkeypatch) ->
             "speedup_vs_nvidia_curand": 1.1,
         }
         (run_dir / "records.jsonl").write_text(json.dumps(record) + "\n", encoding="utf-8")
-        for name in ("manifest.json", "records.csv", "summary.md"):
+        for name in ("manifest.json", "records.csv", "summary.json", "summary.md"):
             (run_dir / name).write_text("artifact", encoding="utf-8")
         return 0
 
@@ -186,6 +186,7 @@ def test_performance_preserves_raw_benchmark_artifacts(tmp_path, monkeypatch) ->
         "manifest.json",
         "records.jsonl",
         "records.csv",
+        "summary.json",
         "summary.md",
     }
 

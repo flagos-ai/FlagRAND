@@ -202,12 +202,14 @@ muxi_results/<timestamp>_<profile>_philox/
 ├── manifest.json
 ├── records.jsonl
 ├── records.csv
+├── summary.json
 └── summary.md
 ```
 
 - `manifest.json`：环境、源码哈希、兼容补丁和 preflight；
 - `records.jsonl`：保留嵌套的检查项与错误栈；
 - `records.csv`：方便筛选和画图；
+- `summary.json`：与其他芯片一致的 FlagOS 机器可读汇总；
 - `summary.md`：适合直接审阅的汇总表。
 
 把结果带回本机时只需压缩该次目录：

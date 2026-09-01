@@ -180,7 +180,9 @@ export SUMMARY="$PWD/nvidia_results/ci_${FLAGRAND_RUN_ID}/summary.json"
 ```
 
 统一 runner 会在每个 API 的 `performance_raw/` 下保留 benchmark 原始目录，其中包括
-`manifest.json`、`records.jsonl`、`records.csv` 和 `summary.md`。
+`manifest.json`、`records.jsonl`、`records.csv`、`summary.json` 和 `summary.md`。验收根目录的
+`summary.json` 是统一验收汇总；子目录中的 `summary.json` 是该 API 矩阵的 FlagOS 汇总，
+`summary.md` 仅作人工阅读。
 
 完成后执行第 5 节校验结果。
 

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from benchmark.summary_json import aggregate_delivery_results, build_summary
+import json
+from unittest.mock import patch
+
+from benchmark.summary_json import aggregate_delivery_results, build_summary, write_summary_json
 
 DELIVERY_NAMES = ["PHILOX4_32_10", "RAW_BITS", "UNIFORM", "NORMAL", "LOGNORMAL"]
 
@@ -19,6 +22,22 @@ ENVIRONMENT = {
     "triton": {"version": "3.1.0+corex.4.4.0", "has_config": True},
     "flagrand": {"version": "0.1.0", "vendor": "iluvatar", "device": "cuda"},
 }
+
+
+def test_write_summary_json_creates_flagos_artifact(tmp_path) -> None:
+    records = [
+        _record("flagrand_public", "raw32", "int32", 4096, 0.20),
+        _record("nvidia_curand", "raw32", "int32", 4096, 0.10),
+    ]
+    manifest = {"platform": "nvidia_h20_cuda", "distributions": ("raw32",)}
+
+    with patch("benchmark.summary_json.collect_environment", return_value=ENVIRONMENT):
+        write_summary_json(tmp_path, manifest, records)
+
+    payload = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    assert set(payload) == {"timestamp", "env", "result"}
+    assert payload["env"] == ENVIRONMENT
+    assert payload["result"]["RAW_BITS"]["performance"]["data"]["int32"]["speedup"] == 0.5
 
 
 def test_summary_matches_flagos_schema_and_latency_semantics() -> None:
