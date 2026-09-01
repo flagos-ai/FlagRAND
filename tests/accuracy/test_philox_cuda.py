@@ -118,22 +118,33 @@ def test_uniform_f32_and_f64_statistics_and_endpoints() -> None:
 
 @pytest.mark.uniform_f64
 @pytest.mark.parametrize("offset", range(8))
-def test_corex_uniform_f64_matches_exact_philox_pair_reference(offset: int) -> None:
+def test_corex_uniform_f64_matches_corex_logical_pair_reference(offset: int) -> None:
     if current_backend() != "corex":
         pytest.skip("CoreX-specific IEEE-754 construction test")
 
     n = 4097
-    raw = torch.empty(2 * n, device="cuda", dtype=torch.int32)
+    lane_shift = offset % 4
+    raw_count = ((lane_shift + 2 * n + 3) // 4) * 4
+    raw = torch.empty(raw_count, device="cuda", dtype=torch.int32)
     actual = torch.empty(n, device="cuda", dtype=torch.float64)
-    curand.generate(curand.create_generator(seed=73, offset=offset), raw)
+    curand.generate(curand.create_generator(seed=73, offset=offset - lane_shift), raw)
     curand.generate_uniform_double(curand.create_generator(seed=73, offset=offset), actual)
 
     words = raw.cpu().tolist()
+    # The public raw API follows cuRAND x/y/z/w order, while the established
+    # CoreX float64 path consumes each Philox counter as r0/r2/r1/r3.
+    logical_words = []
+    for index in range(0, len(words), 4):
+        raw0, raw1, raw2, raw3 = words[index : index + 4]
+        logical_words.extend((raw0, raw2, raw1, raw3))
+    logical_words = logical_words[lane_shift : lane_shift + 2 * n]
+
     scale = float(1 << 53)
     expected = []
-    for raw0, raw1 in zip(words[0::2], words[1::2], strict=True):
-        bits = (raw0 & 0xFFFFFFFF) ^ ((raw1 & 0xFFFFFFFF) << 21)
-        expected.append((bits + 0.5) / scale)
+    for raw0, raw1 in zip(logical_words[0::2], logical_words[1::2], strict=True):
+        high = (raw0 & 0xFFFFFFFF) >> 5
+        low = (raw1 & 0xFFFFFFFF) >> 6
+        expected.append(((1 << 53) - ((high << 26) | low)) / scale)
 
     assert actual.cpu().tolist() == expected
 
