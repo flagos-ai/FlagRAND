@@ -6,7 +6,7 @@ import triton.language as tl
 
 from flagrand.fused._internal.transforms import uint32_pair_to_uniform64_curand_compat, uniform_to_normal_fast_f64
 from flagrand.runtime import CachedKernelLauncher
-from flagrand.runtime.specialization import make_specialization_key
+from flagrand.runtime.specialization import integer_specialization_key
 
 
 @triton.jit
@@ -235,20 +235,16 @@ def _launch_uniform(out: torch.Tensor, seed: int, offset: int, block_size: int, 
     n = out.numel()
     if not n:
         return
-    n_groups = triton.cdiv(n, 4)
-    grid = triton.cdiv(n_groups, block_size)
+    n_groups = (n + 3) // 4
+    grid = (n_groups + block_size - 1) // block_size
     base_subsequence = offset // 4
     shift = offset % 4
     if shift == 0:
-        arguments = (out, seed, base_subsequence, n, n_groups)
-        constexpr_values = (block_size,)
-        option_values = (num_warps,)
         _UNIFORM_F64_LAUNCHER.launch(
             grid,
-            arguments,
-            constexpr_values,
-            option_values,
-            specialization_key=make_specialization_key(arguments, constexpr_values, option_values),
+            (out, seed, base_subsequence, n, n_groups),
+            (block_size,),
+            (num_warps,),
         )
     else:
         arguments = (out, seed, base_subsequence, n, n_groups)
@@ -259,7 +255,18 @@ def _launch_uniform(out: torch.Tensor, seed: int, offset: int, block_size: int, 
             arguments,
             constexpr_values,
             option_values,
-            specialization_key=make_specialization_key(arguments, constexpr_values, option_values),
+            specialization_key=(
+                out.device,
+                out.dtype,
+                out.data_ptr() % 16 == 0,
+                seed,
+                integer_specialization_key(base_subsequence),
+                n,
+                n_groups,
+                shift,
+                block_size,
+                num_warps,
+            ),
         )
 
 
@@ -277,21 +284,17 @@ def _generate_normal_like(
     seed, offset = _launch_args(out, generator, op_name, require_even=True)
     n = out.numel()
     if n:
-        n_groups = triton.cdiv(n, 4)
-        grid = triton.cdiv(n_groups, block_size)
+        n_groups = (n + 3) // 4
+        grid = (n_groups + block_size - 1) // block_size
         base_subsequence = offset // 4
         shift = offset % 4
         standard = mean == 0.0 and stddev == 1.0
         if shift == 0:
-            arguments = (out, seed, base_subsequence, n, n_groups, mean, stddev)
-            constexpr_values = (lognormal, standard, block_size)
-            option_values = (num_warps,)
             _NORMAL_F64_LAUNCHER.launch(
                 grid,
-                arguments,
-                constexpr_values,
-                option_values,
-                specialization_key=make_specialization_key(arguments, constexpr_values, option_values),
+                (out, seed, base_subsequence, n, n_groups, mean, stddev),
+                (lognormal, standard, block_size),
+                (num_warps,),
             )
         else:
             arguments = (out, seed, base_subsequence, n, n_groups, mean, stddev)
@@ -302,7 +305,22 @@ def _generate_normal_like(
                 arguments,
                 constexpr_values,
                 option_values,
-                specialization_key=make_specialization_key(arguments, constexpr_values, option_values),
+                specialization_key=(
+                    out.device,
+                    out.dtype,
+                    out.data_ptr() % 16 == 0,
+                    seed,
+                    integer_specialization_key(base_subsequence),
+                    n,
+                    n_groups,
+                    mean,
+                    stddev,
+                    lognormal,
+                    standard,
+                    shift,
+                    block_size,
+                    num_warps,
+                ),
             )
     generator.offset = offset + n
 

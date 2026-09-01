@@ -11,7 +11,7 @@ from flagrand.fused._internal.transforms import (
 )
 from flagrand.runtime import HAS_LIBTUNER, CachedKernelLauncher, require_libtuner, uses_portable_f32_math
 from flagrand.runtime.libtuner import PHILOX_LIBTUNER_CONFIGS, libentry, libtuner
-from flagrand.runtime.specialization import make_specialization_key
+from flagrand.runtime.specialization import integer_specialization_key
 
 
 @triton.jit
@@ -389,29 +389,37 @@ def generate_philox_uniform_f32(
                 n_counters,
             )
         else:
-            grid = triton.cdiv(n_counters, block_size)
-            arguments = (out, seed_val, base_counter, n_counters)
-            constexpr_values = (block_size,)
-            option_values = (num_warps,)
+            grid = (n_counters + block_size - 1) // block_size
             _PHILOX_UNIFORM_F32_LAUNCHER.launch(
                 grid,
-                arguments,
-                constexpr_values,
-                option_values,
-                specialization_key=make_specialization_key(arguments, constexpr_values, option_values),
+                (out, seed_val, base_counter, n_counters),
+                (block_size,),
+                (num_warps,),
             )
     else:
-        n_groups = triton.cdiv(n, 4)
-        grid = triton.cdiv(n_groups, block_size)
+        shift = offset_val % 4
+        n_groups = (n + 3) // 4
+        grid = (n_groups + block_size - 1) // block_size
         arguments = (out, seed_val, base_counter, n, n_groups)
-        constexpr_values = (offset_val % 4, block_size)
+        constexpr_values = (shift, block_size)
         option_values = (num_warps,)
         _PHILOX_UNIFORM_F32_GENERIC_LAUNCHER.launch(
             grid,
             arguments,
             constexpr_values,
             option_values,
-            specialization_key=make_specialization_key(arguments, constexpr_values, option_values),
+            specialization_key=(
+                out.device,
+                out.dtype,
+                out.data_ptr() % 16 == 0,
+                seed_val,
+                integer_specialization_key(base_counter),
+                n,
+                n_groups,
+                shift,
+                block_size,
+                num_warps,
+            ),
         )
     generator.offset = offset_val + out.numel()
 
@@ -514,31 +522,42 @@ def _launch_normal_like_f32(
                 PORTABLE_MATH=portable_math,
             )
         else:
-            grid = triton.cdiv(n_counters, block_size)
+            grid = (n_counters + block_size - 1) // block_size
             launcher = _PHILOX_LOGNORMAL_F32_LAUNCHER if lognormal else _PHILOX_NORMAL_F32_LAUNCHER
-            arguments = (out, seed_val, base_counter, n, n_counters, mean, stddev)
-            constexpr_values = (block_size, portable_math)
-            option_values = (num_warps,)
             launcher.launch(
                 grid,
-                arguments,
-                constexpr_values,
-                option_values,
-                specialization_key=make_specialization_key(arguments, constexpr_values, option_values),
+                (out, seed_val, base_counter, n, n_counters, mean, stddev),
+                (block_size, portable_math),
+                (num_warps,),
             )
     else:
-        n_groups = triton.cdiv(n, 4)
-        grid = triton.cdiv(n_groups, block_size)
+        shift = offset_val % 4
+        n_groups = (n + 3) // 4
+        grid = (n_groups + block_size - 1) // block_size
         launcher = _PHILOX_LOGNORMAL_F32_GENERIC_LAUNCHER if lognormal else _PHILOX_NORMAL_F32_GENERIC_LAUNCHER
         arguments = (out, seed_val, base_counter, n, n_groups, mean, stddev)
-        constexpr_values = (offset_val % 4, block_size, portable_math)
+        constexpr_values = (shift, block_size, portable_math)
         option_values = (num_warps,)
         launcher.launch(
             grid,
             arguments,
             constexpr_values,
             option_values,
-            specialization_key=make_specialization_key(arguments, constexpr_values, option_values),
+            specialization_key=(
+                out.device,
+                out.dtype,
+                out.data_ptr() % 16 == 0,
+                seed_val,
+                integer_specialization_key(base_counter),
+                n,
+                n_groups,
+                mean,
+                stddev,
+                shift,
+                block_size,
+                portable_math,
+                num_warps,
+            ),
         )
 
 
