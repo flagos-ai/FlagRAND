@@ -11,6 +11,7 @@ from tools.run_tests import (
     normalise_performance,
     parse_accuracy_data,
     parse_performance_data,
+    run_performance,
     supported_operator_ids,
 )
 
@@ -147,6 +148,46 @@ def test_nvidia_performance_records_use_native_curand_speedup(tmp_path) -> None:
 
     assert result["status"] == "Passed"
     assert result["data"]["fp64"]["speedup"] == 1.25
+
+
+def test_performance_preserves_raw_benchmark_artifacts(tmp_path, monkeypatch) -> None:
+    config = RunnerConfig(
+        output_dir=tmp_path,
+        platform="nvidia",
+        profile="acceptance",
+        dump_output=False,
+        timeout=60,
+    )
+
+    def fake_run_cmd(*args, **kwargs) -> int:
+        run_dir = tmp_path / "raw32" / "performance_raw" / "matrix_run"
+        run_dir.mkdir(parents=True)
+        record = {
+            "backend": "flagrand_public",
+            "distribution": "raw32",
+            "dtype": "int32",
+            "n": 4096,
+            "status": "pass",
+            "total_ms_median": 0.01,
+            "speedup_vs_nvidia_curand": 1.1,
+        }
+        (run_dir / "records.jsonl").write_text(json.dumps(record) + "\n", encoding="utf-8")
+        for name in ("manifest.json", "records.csv", "summary.md"):
+            (run_dir / name).write_text("artifact", encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr("tools.run_tests.run_cmd", fake_run_cmd)
+
+    result = run_performance(0, {"id": "raw32"}, config)
+
+    assert result["status"] == "Passed"
+    run_dir = tmp_path / "raw32" / "performance_raw" / "matrix_run"
+    assert {path.name for path in run_dir.iterdir()} == {
+        "manifest.json",
+        "records.jsonl",
+        "records.csv",
+        "summary.md",
+    }
 
 
 def test_missing_native_baseline_is_reported_as_skipped(tmp_path) -> None:

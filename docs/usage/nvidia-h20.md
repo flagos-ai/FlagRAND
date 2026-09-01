@@ -85,4 +85,5 @@ bash scripts/ci/run_backend_ci.sh nvidia
 nvidia_results/ci_<RUN_ID>/summary.json
 ```
 
-各 benchmark 子进程还会保存 `manifest.json`、`records.jsonl`、`records.csv` 和 `summary.md`。
+各 benchmark 子进程的 `manifest.json`、`records.jsonl`、`records.csv` 和 `summary.md` 保存在对应 API 的
+`performance_raw/<run>/` 目录。

@@ -8,7 +8,6 @@ import datetime as dt
 import json
 import os
 import platform as platform_module
-import shutil
 import subprocess
 import sys
 import time
@@ -552,7 +551,7 @@ def parse_performance_data(operator_id: str, result_file: Path) -> dict[str, Any
 def run_performance(gpu_id: int, operator: dict[str, Any], config: RunnerConfig) -> dict[str, Any]:
     operator_id = str(operator["id"])
     operator_dir = config.output_dir / operator_id
-    raw_dir = operator_dir / ".performance_raw"
+    raw_dir = operator_dir / "performance_raw"
     ensure_dir(raw_dir)
     command = _performance_command(gpu_id, operator_id, raw_dir, config)
     started = time.monotonic()
@@ -569,7 +568,6 @@ def run_performance(gpu_id: int, operator: dict[str, Any], config: RunnerConfig)
         json.dumps(normalise_performance(operator_id, records), indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
-    shutil.rmtree(raw_dir)
     result = {
         "duration": duration,
         "exit_code": code,

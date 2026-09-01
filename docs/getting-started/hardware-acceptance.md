@@ -154,7 +154,9 @@ git rev-parse HEAD
 
 ### 4.2 安装 FlagRAND
 
-H20 节点预装 NVIDIA driver、CUDA、PyTorch 和 Triton。项目虚拟环境继承节点当前 Python 的硬件包。
+容器：`flagtree`。
+
+H20 节点预装 NVIDIA driver、CUDA、PyTorch 和 Triton。项目虚拟环境继承容器当前 Python 的硬件包。
 
 ```bash
 export FLAGRAND_SYSTEM_PYTHON="${FLAGRAND_SYSTEM_PYTHON:-python3}"
@@ -176,6 +178,9 @@ FLAGRAND_PERF_PROFILE=acceptance \
   bash scripts/ci/run_backend_ci.sh nvidia
 export SUMMARY="$PWD/nvidia_results/ci_${FLAGRAND_RUN_ID}/summary.json"
 ```
+
+统一 runner 会在每个 API 的 `performance_raw/` 下保留 benchmark 原始目录，其中包括
+`manifest.json`、`records.jsonl`、`records.csv` 和 `summary.md`。
 
 完成后执行第 5 节校验结果。
 
