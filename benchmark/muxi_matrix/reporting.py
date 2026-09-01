@@ -134,11 +134,11 @@ def print_acceptance_summary(summary: dict[str, Any]) -> None:
 def print_record(record: dict[str, Any]) -> None:
     identity = f"{record['backend']:<17} {record['distribution']:<15} " f"N={record['n']:<9}"
     if record["status"] == "pass":
-        speedup = record.get("speedup_vs_ppu_curand")
-        speedup_text = "" if speedup is None else f" speedup_vs_curand={float(speedup):.3f}x"
-        acrand_speedup = record.get("speedup_vs_ppu_acrand")
-        if acrand_speedup is not None:
-            speedup_text += f" speedup_vs_acrand={float(acrand_speedup):.3f}x"
+        speedup_text = ""
+        for baseline in ("mcrand", "ppu_curand", "ppu_acrand"):
+            speedup = record.get(f"speedup_vs_{baseline}")
+            if speedup is not None:
+                speedup_text += f" speedup_vs_{baseline}={float(speedup):.3f}x"
         LOGGER.info(
             f"PASS {identity} total={record['total_ms_median']:.4f} ms "
             f"device={record.get('device_ms_median', 0.0):.4f} ms "
@@ -168,11 +168,14 @@ def _write_csv(path: Path, records: list[dict[str, Any]]) -> None:
         "device_ms_max",
         "giga_elements_per_second",
         "effective_gb_per_second",
+        "speedup_vs_mcrand",
+        "device_speedup_vs_mcrand",
         "speedup_vs_ppu_curand",
         "device_speedup_vs_ppu_curand",
         "speedup_vs_ppu_acrand",
         "device_speedup_vs_ppu_acrand",
         "library_path",
+        "library_version",
         "libtuner",
         "validation",
         "error_type",
@@ -193,6 +196,8 @@ def _render_summary(manifest: dict[str, Any], records: list[dict[str, Any]]) -> 
     failed = len(records) - passed
     preflight = manifest.get("preflight", {}).get("status", "error")
     compatibility = manifest.get("compatibility", {})
+    baseline = str(manifest.get("acceptance_baseline", "mcrand"))
+    speedup_key = f"speedup_vs_{baseline}"
     lines = [
         "# Muxi Philox Validation Summary",
         "",
@@ -201,11 +206,12 @@ def _render_summary(manifest: dict[str, Any], records: list[dict[str, Any]]) -> 
         f"- Triton backend: `{compatibility.get('backend', 'unknown')}`",
         f"- Compatibility patches: `{', '.join(compatibility.get('applied', [])) or 'none'}`",
         "",
-        "| Backend | Distribution | dtype | N | Status | Enqueue us | Total ms | Device ms | GE/s | Speedup vs PPU |",
+        "| Backend | Distribution | dtype | N | Status | Enqueue us | "
+        f"Total ms | Device ms | GE/s | Speedup vs {baseline} |",
         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for record in records:
-        speedup = record.get("speedup_vs_ppu_acrand", record.get("speedup_vs_ppu_curand", 0.0))
+        speedup = record.get(speedup_key, 0.0)
         lines.append(
             "| {backend} | {distribution} | {dtype} | {n} | {status} | "
             "{enqueue:.3f} | {total:.5f} | {device:.5f} | {geps:.4f} | {speedup:.4f} |".format(

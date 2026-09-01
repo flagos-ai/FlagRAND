@@ -72,6 +72,9 @@ case "$BACKEND" in
     nvidia)
         RESULTS_DIR="$PROJECT_DIR/nvidia_results/ci_$RUN_ID"
         ;;
+    metax|muxi|maca)
+        RESULTS_DIR="$PROJECT_DIR/muxi_results/ci_$RUN_ID"
+        ;;
     ascend-cann900)
         RESULTS_DIR="$PROJECT_DIR/ascend_910c_results/ci_$RUN_ID"
         ;;

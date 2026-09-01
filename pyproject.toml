@@ -40,6 +40,7 @@ markers = [
     "performance: end-to-end hardware performance matrix",
     "cuda: requires a CUDA-compatible device",
     "ppu: requires a PPU-ZW810E runner and native RNG libraries",
+    "metax: requires a MetaX C550 runner with MACA and mcRAND",
     "ascend_910c: requires a Huawei Ascend 910C runner with CANN 9.0",
     "runtime: backend and launch-policy checks",
     "raw32: raw 32-bit Philox output",

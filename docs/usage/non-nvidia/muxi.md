@@ -1,7 +1,13 @@
-# FlagRAND Philox 沐曦运行指南
+# FlagRAND 沐曦 MetaX C550 / MACA 运行指南
 
 PPU-ZW810E 请看 [PPU 运行指南](ppu.md)，使用 `benchmark.run_ppu` 和 `benchmark/ppu_matrix/`。
-本文件保留给沐曦/MACA 路径，入口是 `benchmark.run_muxi`。
+本文件保留给沐曦 MetaX/MACA 路径，canonical vendor 是 `metax`，Triton target
+backend 是 `maca`，底层矩阵入口是 `benchmark.run_muxi`。从新 `main` 克隆后的容器启动、
+统一 runner 验收和 `summary.json` 校验见 [硬件验收流程](../../getting-started/hardware-acceptance.md)。
+
+> 验证状态：本项目已在 pre-main 沐曦分支上完成 C550 的 216 条矩阵验收。NVIDIA 新
+> main 和 MetaX 独立分流的集成版尚未在 C550 重测；旧性能数值不代表集成后 `main`
+> 已通过。
 
 本次测试对象固定为：
 
@@ -15,12 +21,20 @@ PPU-ZW810E 请看 [PPU 运行指南](ppu.md)，使用 `benchmark.run_ppu` 和 `b
 | `generate_lognormal` | `float32` | 偶数 |
 | `generate_lognormal_double` | `float64` | 2 的倍数 |
 
-Torch 数字只作为同一设备上的平台参考，不表示算法等价。Muxi 入口默认跳过
-PPU cuRAND baseline；如需强制运行，可加 `--with-ppu-curand`。
+Muxi 入口默认使用沐曦原生 `libmcrand.so` 作为七类 Host API 的性能 baseline。
+Torch 数字仍只作为同一设备上的平台参考，不表示算法等价。PPU cuRAND baseline
+默认跳过；如需强制运行，可加 `--with-ppu-curand`。
 
 ## 1. 准备代码
 
-git clone 后进入 `FlagRAND` 项目根目录。
+宿主机从远端 `main` 新克隆后进入 `FlagRAND` 项目根目录，并在宿主机记录版本：
+
+```bash
+git clone --branch main --single-branch \
+  git@github.com:flagos-ai/FlagRAND.git FlagRAND
+cd FlagRAND
+git rev-parse HEAD
+```
 
 项目根目录应至少包含：
 
@@ -38,16 +52,26 @@ FlagRAND/
 
 ## 2. 启动沐曦容器
 
-宿主目录可按实际位置修改：
+已验证镜像包含 MACA PyTorch/Triton 和原生 mcRAND，但不包含 Git。在上一节新克隆的
+项目根目录中创建持久容器：
 
 ```bash
-docker run --rm -it \
-  --device=/dev/dri \
+export METAX_IMAGE='cr.metax-tech.com/public-ai-release/maca/vllm-metax:0.20.0-maca.ai3.7.0.107-torch2.8-py310-ubuntu22.04-amd64'
+
+docker run -it \
+  --name flagrand-muxi-dev \
   --device=/dev/mxcd \
-  -v "$HOME/xuzc:/workspace" \
+  --device=/dev/dri \
+  -v "$PWD:/workspace/FlagRAND" \
   -w /workspace/FlagRAND \
-  cr.metax-tech.com/public-ai-release/maca/vllm-metax:0.20.0-maca.ai3.7.0.107-torch2.8-py310-ubuntu22.04-amd64 \
-  bash
+  --entrypoint bash \
+  "$METAX_IMAGE"
+```
+
+后续进入同一容器：
+
+```bash
+docker start -ai flagrand-muxi-dev
 ```
 
 在容器内固定从当前目录导入，并把缓存也留在项目目录中：
@@ -56,31 +80,53 @@ docker run --rm -it \
 export PYTHONPATH="$PWD/src:$PWD"
 export TRITON_CACHE_DIR="$PWD/.triton_cache"
 export XDG_CACHE_HOME="$PWD/.cache"
+export PYTHON_BIN=python3
 mkdir -p "$TRITON_CACHE_DIR" "$XDG_CACHE_HOME"
 ```
 
 不建议执行 `pip install triton` 或安装 NVIDIA 版 PyTorch。镜像自带的 MACA
-PyTorch/Triton 才是这里需要验证的运行时。
+PyTorch/Triton 才是这里需要验证的运行时。`flagtree-metax3.6-...-202606-base`
+镜像未提供本流程需要的 `torch`，不用于本项验收。
 
 ## 3. 确认导入来源
 
 先确认测试没有误导入服务器上的其他 FlagRand：
 
 ```bash
-python - <<'PY'
+python3 - <<'PY'
 import flagrand
 import torch
 from triton.runtime import driver
 
 print("flagrand:", flagrand.__file__)
 print("torch:", torch.__version__)
+print("available:", torch.cuda.is_available())
+print("count:", torch.cuda.device_count())
 print("device:", torch.cuda.get_device_name(0))
 print("target:", driver.active.get_current_target())
 PY
 ```
 
 `flagrand` 路径必须落在当前目录的 `src/flagrand` 下，target 的 backend 应为
-`maca`。脚本还会再次检查导入路径并记录全部 Python 源码的 SHA-256。
+`maca`。已验证的镜像显示 `torch==2.8.0+metax3.7.0.7`、`MetaX C550` 和
+`GPUTarget(backend='maca', arch=80, warp_size=64)`。脚本还会再次检查导入路径并记录
+全部 Python 源码的 SHA-256。
+
+确认当前运行环境能加载 mcRAND：
+
+```bash
+ldconfig -p | grep -E 'libmcrand|libmcruntime'
+python3 - <<'PY'
+from benchmark.muxi_matrix.mcrand import mcrand_library_path, mcrand_version
+
+print("mcRAND library:", mcrand_library_path())
+print("mcRAND version:", mcrand_version())
+PY
+```
+
+默认搜索 `$MACA_PATH/lib/libmcrand.so`、`/opt/maca/lib/libmcrand.so` 和
+`/opt/maca-*/lib/libmcrand.so`。已验证镜像返回 `/opt/maca/lib/libmcrand.so` 和版本值
+`100000`。非标准路径可通过 `FLAGRAND_MCRAND_PATH` 指定。
 
 ## 4. 正确性检验
 
@@ -104,12 +150,72 @@ Results: .../muxi_results/<timestamp>_smoke_philox
 如果预检失败，不要继续看性能。先保留结果目录中的 `manifest.json`，它包含导入来源、
 运行时版本、Triton target、已启用的兼容补丁和具体失败项。
 
+## 5. mcRAND smoke baseline
 
-
-## 5. 完整矩阵
+先运行三组 shape 的七类 API，关闭无关的 Torch 参考：
 
 ```bash
-python3 -m benchmark.run_muxi --profile full
+python3 -m benchmark.run_muxi \
+  --profile smoke \
+  --skip-torch-reference
+```
+
+每个 shape 会依次运行 FlagRAND 和 mcRAND，并报告：
+
+```text
+speedup_vs_mcrand = mcRAND total_ms_median / FlagRAND total_ms_median
+```
+
+结果同时记录 mcRAND 动态库路径、版本、Host 总耗时、设备事件耗时和 enqueue 耗时。
+如需只验证 FlagRAND，可加 `--skip-mcrand`。
+
+## 6. 正式 acceptance 和完整矩阵
+
+统一 runner 的 canonical backend 名是 `metax`：
+
+```bash
+export FLAGRAND_RUN_ID="metax_$(date +%Y%m%d_%H%M%S)"
+PYTHON_BIN=python3 \
+FLAGRAND_PERF_PROFILE=acceptance \
+  bash scripts/ci/run_backend_ci.sh metax
+export SUMMARY="$PWD/muxi_results/ci_${FLAGRAND_RUN_ID}/summary.json"
+```
+
+它会执行环境记录、统一 runner 自测、正确性和以 mcRAND 为 baseline 的性能矩阵，并在
+验收根目录生成 FlagOS `summary.json`。
+
+直接运行同一进程的 MetaX 原始 acceptance 矩阵：
+
+```bash
+python3 -m benchmark.run_muxi \
+  --profile full \
+  --acceptance-profile \
+  --acceptance-baseline mcrand \
+  --with-mcrand \
+  --acceptance-min 0.95 \
+  --acceptance-max 1.50 \
+  --strict-acceptance \
+  --skip-torch-reference
+```
+
+固定 acceptance shape 集包含 108 个 FlagRAND case 和 108 个 mcRAND case，共 216 条记录。
+性能判定先计算每个 shape 的 `mcRAND total_ms_median / FlagRAND total_ms_median`，再在单个
+API 内取算术平均，不计算跨 API 平均值。通过时输出包含：
+
+```text
+Acceptance status: pass (7/7 APIs in target range)
+Completed 216 records with 0 failure(s).
+```
+
+pre-main 沐曦分支已通过该矩阵；新 main 集成版必须在 C550 上重新生成这两行结果，
+之前的加速比不作为新 main 的验收结论。
+
+不带 `--acceptance-profile` 的普通 full 矩阵用于诊断固定宽 shape：
+
+```bash
+python3 -m benchmark.run_muxi \
+  --profile full \
+  --skip-torch-reference
 ```
 
 full 的元素数量为：
@@ -118,8 +224,8 @@ full 的元素数量为：
 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216
 ```
 
-产生 49 个 FlagRAND case。启用 Torch 参考时，为每种规模运行六个 RNG 参考和四个
-纯写参考。需要临时缩小范围时可以使用：
+默认产生 49 个 FlagRAND case 和 49 个 mcRAND case。启用 Torch 参考时，为每种规模
+额外运行 RNG 和纯写参考。需要临时缩小范围时可以使用：
 
 ```bash
 python3 -m benchmark.run_muxi \
@@ -148,7 +254,7 @@ python3 -m benchmark.run_muxi \
 
 如果需要在 Muxi 入口里临时跑 PPU cuRAND，可加 `--with-ppu-curand`，通常不建议。
 
-## 6. LibTuner A/B
+## 7. LibTuner A/B
 
 手工配置基线：
 
@@ -182,18 +288,25 @@ python3 -m benchmark.run_muxi \
   --results-dir muxi_results/libtuner_hot
 ```
 
-## 7. 沐曦兼容层做了什么
+## 8. MetaX 独立分流和兼容层
 
-兼容逻辑在 Triton target backend 为 `maca` 时有效：
+当 vendor 为 `metax`、Triton target backend 为 `maca` 时：
 
-1. 强制使用标准 Triton JIT launch，绕开依赖 NVIDIA Triton 私有 launcher ABI 的缓存启动器；
-2. 将 f32 Box-Muller 的 NVIDIA inline PTX `sin/cos` 替换成 `tl.sin/tl.cos`；
-3. 保留 Philox counter、raw 到 uniform 的映射、f64 多项式路径和 Host API 状态语义。
+1. 七个 Host API 先经过 `src/flagrand/runtime/backend/_metax/ops.py` 平台分流，不进入 NVIDIA 专属
+   dispatcher；
+2. raw、f32、f64 Philox kernel 全部位于 `src/flagrand/metax/philox.py`，不导入共享
+   `rng/philox.py`、`philox_direct*` 或 NVIDIA kernel；
+3. `src/flagrand/metax/transforms.py` 固定 C550 已验证的 uniform 与 Box–Muller 变换，f32
+   normal/lognormal 使用 `tl.log`、`tl.sqrt`、`tl.sin`、`tl.cos` 可移植数学路径；
+4. `src/flagrand/metax/launcher.py` 首次 JIT 编译后缓存 `CompiledKernel`，通过 MACA Triton
+   旧版 binder specialization key
+   复用编译结果，并直接调用 `CompiledKernel.run`；
+5. 保留 Philox counter、Host API generator seed/offset 推进、bulk/split 和 replay 语义。
 
-因此验收目标是
-Philox 流推进一致、分段与整段一致，并通过分布统计检查。
+这个边界使 MetaX 的 kernel、数学语义和 MACA launcher 均可独立演进。验收目标是 Philox
+流推进一致、分段与整段一致，并通过分布统计检查。
 
-## 8. 结果目录
+## 9. 结果目录
 
 每次运行都会新建：
 
@@ -212,9 +325,15 @@ muxi_results/<timestamp>_<profile>_philox/
 - `summary.json`：与其他芯片一致的 FlagOS 机器可读汇总；
 - `summary.md`：适合直接审阅的汇总表。
 
+统一 runner 还会在 `muxi_results/ci_<RUN_ID>/` 生成跨 API 的 `summary.json`，并把上述
+原始矩阵目录保留在每个 API 的 `performance_raw/` 下。
+
 把结果带回本机时只需压缩该次目录：
 
 ```bash
 RESULT_DIR="$(find muxi_results -mindepth 1 -maxdepth 1 -type d | sort | tail -n 1)"
 tar -czf muxi_philox_results.tar.gz "$RESULT_DIR"
 ```
+
+[性能正确性与实现说明](MetaX_C550_FlagRAND_性能正确性与实现说明.md) 中的实测数值来自 pre-main
+沐曦分支；新 main 在 C550 重测前，该数值只作历史对照。

@@ -130,6 +130,7 @@ def test_summary_selects_the_platform_acceptance_baseline() -> None:
         ({"platform": "nvidia_h20_cuda"}, "nvidia_curand"),
         ({"platform": "huawei_ascend_910c"}, "cann_aclnn"),
         ({"platform": "PPU", "acceptance_baseline": "ppu_acrand"}, "ppu_acrand"),
+        ({"platform": "muxi", "acceptance_baseline": "mcrand"}, "mcrand"),
     )
     for manifest, baseline in platforms:
         manifest["distributions"] = ("raw32",)

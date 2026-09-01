@@ -6,7 +6,6 @@ import pytest
 import torch
 
 from flagrand import curand
-from flagrand.fused._internal.philox_direct import generate_philox_lognormal_f32, generate_philox_normal_f32
 from flagrand.runtime import current_backend, current_vendor
 
 pytestmark = [
@@ -252,27 +251,21 @@ def test_normal_and_lognormal_split_match_bulk(dtype: torch.dtype) -> None:
 @pytest.mark.parametrize(
     ("operation", "lognormal"),
     (
-        pytest.param(generate_philox_normal_f32, False, marks=pytest.mark.normal_f32),
-        pytest.param(generate_philox_lognormal_f32, True, marks=pytest.mark.lognormal_f32),
+        pytest.param(curand.generate_normal, False, marks=pytest.mark.normal_f32),
+        pytest.param(curand.generate_lognormal, True, marks=pytest.mark.lognormal_f32),
     ),
 )
-def test_portable_f32_math_path(operation, lognormal: bool) -> None:
+def test_public_f32_normal_path_uses_backend_dispatch(operation, lognormal: bool) -> None:
     n = 65536
     bulk = torch.empty(n, device="cuda", dtype=torch.float32)
     first = torch.empty(n // 2, device="cuda", dtype=torch.float32)
     second = torch.empty_like(first)
-    kwargs = {
-        "mean": 0.0,
-        "stddev": 1.0,
-        "block_size": 512,
-        "num_warps": 4,
-        "_portable_math": True,
-    }
+    kwargs = {"mean": 0.0, "stddev": 1.0, "block_size": 512, "num_warps": 4}
 
-    operation(bulk, curand.create_generator(seed=63).engine, **kwargs)
-    split_generator = curand.create_generator(seed=63).engine
-    operation(first, split_generator, **kwargs)
-    operation(second, split_generator, **kwargs)
+    operation(curand.create_generator(seed=63), bulk, **kwargs)
+    split_generator = curand.create_generator(seed=63)
+    operation(split_generator, first, **kwargs)
+    operation(split_generator, second, **kwargs)
     torch.cuda.synchronize()
 
     assert torch.equal(bulk, torch.cat((first, second)))

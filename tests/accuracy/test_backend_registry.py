@@ -25,13 +25,17 @@ def test_registry_contains_supported_vendor_descriptors() -> None:
 def test_public_curand_uses_selected_vendor_override() -> None:
     expected_module = {
         "nvidia": "flagrand.runtime.backend._nvidia.ops",
+        "metax": "flagrand.runtime.backend._metax.ops",
         "iluvatar": "flagrand.runtime.backend._iluvatar.ops",
         "ascend": "flagrand.runtime.backend._ascend.ops",
     }.get(device.vendor_name, "flagrand._curand_philox_fast_path")
     assert curand.try_generate_raw.__module__ == expected_module
     assert curand.try_generate_uniform.__module__ == expected_module
     assert curand.try_generate_normal.__module__ == expected_module
-    public_module = "flagrand.runtime.backend._nvidia.ops" if device.vendor_name == "nvidia" else "flagrand.curand"
+    public_module = {
+        "nvidia": "flagrand.runtime.backend._nvidia.ops",
+        "metax": "flagrand.runtime.backend._metax.ops",
+    }.get(device.vendor_name, "flagrand.curand")
     for name in (
         "generate",
         "generate_uniform",

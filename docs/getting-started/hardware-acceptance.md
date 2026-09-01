@@ -1,6 +1,6 @@
 # FlagRAND 硬件验收流程
 
-适用后端：NVIDIA H20、天数智芯 BI-V150、PPU-ZW810E、华为 Ascend 910C。
+适用后端：NVIDIA H20、天数智芯 BI-V150、PPU-ZW810E、华为 Ascend 910C、沐曦 MetaX C550。
 
 节点应已部署对应厂商的驱动和运行时，并具备 FlagRAND 仓库的 SSH 读取权限。验收固定从远端
 `main` 获取源码，不复用已有源码目录、项目虚拟环境或历史结果目录。
@@ -50,7 +50,7 @@ FLAGRAND_PERF_PROFILE=acceptance \
 export SUMMARY="$PWD/corex_results/ci_${FLAGRAND_RUN_ID}/summary.json"
 ```
 
-完成后执行第 5 节校验结果。
+完成后执行第 6 节校验结果。
 
 ## 2. PPU-ZW810E
 
@@ -93,7 +93,7 @@ FLAGRAND_PERF_PROFILE=acceptance \
 export SUMMARY="$PWD/ppu_results/ci_${FLAGRAND_RUN_ID}/summary.json"
 ```
 
-完成后执行第 5 节校验结果。FP64 精确构造专项显示 8 个 `skipped` 属于平台能力差异，不计为失败。
+完成后执行第 6 节校验结果。FP64 精确构造专项显示 8 个 `skipped` 属于平台能力差异，不计为失败。
 
 ## 3. 华为 Ascend 910C / CANN 9.0
 
@@ -137,7 +137,7 @@ FLAGRAND_PERF_PROFILE=acceptance \
 export SUMMARY="$PWD/ascend_910c_results/ci_${FLAGRAND_RUN_ID}/summary.json"
 ```
 
-完成后执行第 5 节校验结果。
+完成后执行第 6 节校验结果。
 
 ## 4. NVIDIA H20
 
@@ -184,16 +184,161 @@ export SUMMARY="$PWD/nvidia_results/ci_${FLAGRAND_RUN_ID}/summary.json"
 `summary.json` 是统一验收汇总；子目录中的 `summary.json` 是该 API 矩阵的 FlagOS 汇总，
 `summary.md` 仅作人工阅读。
 
-完成后执行第 5 节校验结果。
+完成后执行第 6 节校验结果。
 
-## 5. 校验 summary.json
+## 5. 沐曦 MetaX C550 / MACA AI 3.7.0.107
+
+### 5.1 获取源码
+
+在宿主机克隆远端 `main`，并记录本次验收的代码版本。MetaX 验收镜像不提供 Git，因此
+源码由宿主机准备，再挂载进容器。
+
+```bash
+git clone --branch main --single-branch \
+  git@github.com:flagos-ai/FlagRAND.git FlagRAND
+cd FlagRAND
+git rev-parse HEAD
+```
+
+### 5.2 启动 MetaX 容器
+
+已验证的 MetaX C550 运行镜像为：
+
+```text
+cr.metax-tech.com/public-ai-release/maca/vllm-metax:0.20.0-maca.ai3.7.0.107-torch2.8-py310-ubuntu22.04-amd64
+```
+
+首次从当前新克隆的项目目录创建持久容器：
+
+```bash
+export METAX_IMAGE='cr.metax-tech.com/public-ai-release/maca/vllm-metax:0.20.0-maca.ai3.7.0.107-torch2.8-py310-ubuntu22.04-amd64'
+
+docker run -it \
+  --name flagrand-muxi-dev \
+  --device=/dev/mxcd \
+  --device=/dev/dri \
+  -v "$PWD:/workspace/FlagRAND" \
+  -w /workspace/FlagRAND \
+  --entrypoint bash \
+  "$METAX_IMAGE"
+```
+
+后续进入同一容器：
+
+```bash
+docker start -ai flagrand-muxi-dev
+```
+
+验收使用镜像预装的 MACA PyTorch/Triton，不在容器内安装 NVIDIA 版 PyTorch 或替换
+Triton。`flagtree-metax3.6-...-202606-base` 镜像未提供本流程需要的 `torch`，不用于本项验收。
+
+### 5.3 检查运行环境和 mcRAND
+
+在容器内固定从当前源码目录导入，并把 Triton 缓存留在项目目录中：
+
+```bash
+export PYTHONPATH="$PWD/src:$PWD"
+export TRITON_CACHE_DIR="$PWD/.triton_cache"
+export XDG_CACHE_HOME="$PWD/.cache"
+export PYTHON_BIN=python3
+mkdir -p "$TRITON_CACHE_DIR" "$XDG_CACHE_HOME"
+```
+
+检查 MetaX C550、Torch 和 Triton target：
+
+```bash
+python3 - <<'PY'
+import flagrand
+import torch
+from triton.runtime import driver
+
+print("flagrand:", flagrand.__file__)
+print("torch:", torch.__version__)
+print("available:", torch.cuda.is_available())
+print("count:", torch.cuda.device_count())
+print("device:", torch.cuda.get_device_name(0))
+print("target:", driver.active.get_current_target())
+PY
+```
+
+已验证的镜像环境显示 `torch==2.8.0+metax3.7.0.7`、`MetaX C550` 和
+`GPUTarget(backend='maca', arch=80, warp_size=64)`。再检查原生 mcRAND baseline：
+
+```bash
+ldconfig -p | grep -E 'libmcrand|libmcruntime'
+
+python3 - <<'PY'
+from benchmark.muxi_matrix.mcrand import mcrand_library_path, mcrand_version
+
+print("mcRAND library:", mcrand_library_path())
+print("mcRAND version:", mcrand_version())
+PY
+```
+
+已验证的镜像返回 `/opt/maca/lib/libmcrand.so` 和版本值 `100000`。
+
+### 5.4 执行正确性预检
+
+```bash
+python3 -m benchmark.run_muxi --preflight-only
+```
+
+预检覆盖 seed=0 raw32 golden vector，以及七个 API 跨 aligned/generic 路径的 bulk/split 与
+offset 流连续性。
+通过时输出包含：
+
+```text
+Preflight: pass
+```
+
+### 5.5 执行正式验收
+
+统一 runner 以 `metax` 为 canonical backend（`muxi` 和 `maca` 仅作别名），并使用 mcRAND
+作为七个 Host API 的原生性能 baseline：
+
+```bash
+export FLAGRAND_RUN_ID="metax_$(date +%Y%m%d_%H%M%S)"
+PYTHON_BIN=python3 \
+FLAGRAND_PERF_PROFILE=acceptance \
+  bash scripts/ci/run_backend_ci.sh metax
+export SUMMARY="$PWD/muxi_results/ci_${FLAGRAND_RUN_ID}/summary.json"
+```
+
+统一 runner 在每个 API 的 `performance_raw/` 下保留 `benchmark.run_muxi` 原始产物，验收根目录的
+`summary.json` 用于第 6 节的统一结果校验。
+
+如需在同一进程中直接复核完整 MetaX 原始矩阵，执行：
+
+```bash
+python3 -m benchmark.run_muxi \
+  --profile full \
+  --acceptance-profile \
+  --acceptance-baseline mcrand \
+  --with-mcrand \
+  --acceptance-min 0.95 \
+  --acceptance-max 1.50 \
+  --strict-acceptance \
+  --skip-torch-reference
+```
+
+固定 shape 集包含 108 个 FlagRAND case 和 108 个 mcRAND case，共 216 条记录。通过时
+输出包含 `Acceptance status: pass (7/7 APIs in target range)` 和
+`Completed 216 records with 0 failure(s).`
+
+pre-main 沐曦分支已产生过上述 216 条通过结果；将 NVIDIA 新 main 与 MetaX 独立分流
+集成后，必须以新 `main` 的 C550 实测产物作为本次验收结论，不沿用 pre-main 性能数值。
+
+完成后执行第 6 节校验结果。
+
+## 6. 校验 summary.json
 
 以下命令使用前一节设置的 `SUMMARY` 路径，检查文件、FlagOS schema、交付项名称和数学正确性结果，
 并打印各交付项的统计计数。
 
 ```bash
+PYTHON_BIN="${PYTHON_BIN:-$PWD/.venv/bin/python}"
 test -s "$SUMMARY"
-.venv/bin/python - "$SUMMARY" <<'PY'
+"$PYTHON_BIN" - "$SUMMARY" <<'PY'
 import json
 import pathlib
 import sys
@@ -229,5 +374,5 @@ SUMMARY_JSON_CHECK=PASS
 查看完整结果：
 
 ```bash
-.venv/bin/python -m json.tool "$SUMMARY"
+"$PYTHON_BIN" -m json.tool "$SUMMARY"
 ```

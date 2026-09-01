@@ -18,6 +18,8 @@
 - `.github/workflows/build-check.yml`：构建并检查 wheel/sdist。
 - `.github/workflows/unittest.yaml`：根据 `.github/backends.json` 选择硬件后端，并调用可复用的 `.github/workflows/backend-test.yaml`。
 - 四个自托管 runner 标签分别为 `nvidia-h20`、`iluvatar`、`thead` 和 `cann9`，对应 `nvidia`、`iluvatar`、`thead`、`ascend-cann900` 后端。
+- MetaX 使用统一后端名 `metax`（兼容 `muxi`、`maca` 别名）和相同的 CI 脚本；当前 C550
+  节点尚未登记 GitHub Actions runner label，因此先按硬件验收文档在容器内手工运行。
 - `scripts/ci/run_backend_ci.sh <backend>` 是统一硬件入口；它执行环境记录、注册表检查、统一 runner 测试、正确性与性能矩阵，并生成交付 `summary.json`。
 
 正式 acceptance 示例：
@@ -35,6 +37,7 @@ bash scripts/ci/run_backend_ci.sh thead
 | 后端 | 结果目录 |
 |---|---|
 | `nvidia` | `nvidia_results/ci_<RUN_ID>/summary.json` |
+| `metax` | `muxi_results/ci_<RUN_ID>/summary.json` |
 | `iluvatar` | `corex_results/ci_<RUN_ID>/summary.json` |
 | `thead` | `ppu_results/ci_<RUN_ID>/summary.json` |
 | `ascend-cann900` | `ascend_910c_results/ci_<RUN_ID>/summary.json` |

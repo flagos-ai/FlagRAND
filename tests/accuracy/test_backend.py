@@ -14,8 +14,8 @@ def test_backend_policy_keeps_cuda_fast_path() -> None:
     assert not uses_portable_f32_math("cuda")
 
 
-def test_backend_policy_uses_portable_maca_path() -> None:
-    assert not supports_cached_binary_launch("maca")
+def test_backend_policy_caches_maca_launch_with_portable_math() -> None:
+    assert supports_cached_binary_launch("maca")
     assert uses_portable_f32_math("maca")
 
 

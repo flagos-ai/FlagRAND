@@ -47,12 +47,12 @@ def apply_maca_compatibility() -> dict[str, Any]:
             )
 
     if backend == "maca":
-        if supports_cached_binary_launch() or not uses_portable_f32_math():
-            raise RuntimeError("FlagRAND did not select its built-in MACA fallbacks.")
+        if not supports_cached_binary_launch() or not uses_portable_f32_math():
+            raise RuntimeError("FlagRAND did not select its built-in MACA launch and math policy.")
         applied.extend(
             (
-                "core_standard_triton_jit_launcher",
-                "core_portable_tl_sin_cos_box_muller_f32",
+                "metax_cached_binary_launcher",
+                "metax_portable_tl_sin_cos_box_muller_f32",
             )
         )
     elif backend == "ppu":

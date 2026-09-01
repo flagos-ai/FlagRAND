@@ -7,6 +7,7 @@ from typing import Any
 import torch
 
 from benchmark.muxi_matrix.config import ALL_DISTRIBUTIONS, Profile
+from benchmark.muxi_matrix.mcrand import McrandGenerator, mcrand_library_path, mcrand_version
 from benchmark.muxi_matrix.timing import measure
 from benchmark.ppu_matrix.acrand import PpuAcrandGenerator, ppu_acrand_library_path
 from benchmark.ppu_matrix.curand import PpuCurandGenerator, ppu_curand_library_path
@@ -25,20 +26,20 @@ DTYPES = {
 
 _PHILOX_GOLDEN_SEED_0 = (
     1713891541,
-    -1135104948,
     -513161843,
+    -1135104948,
     -1694442536,
     -2075847199,
-    253345875,
     -259166550,
+    253345875,
     -2080868880,
     107075191,
-    639715526,
     -1232967847,
+    639715526,
     2000445424,
     -257357124,
-    -1092682108,
     291018424,
+    -1092682108,
     -1200667194,
 )
 
@@ -97,6 +98,44 @@ def run_flagrand_case(
         timing_output = torch.empty_like(output)
         timing_generator = make_generator(seed)
         record.update(measure(lambda: invoke(distribution, timing_generator, timing_output), profile))
+        record.update(_throughput(record, output.element_size(), n))
+        record["status"] = "pass"
+    except Exception as exc:
+        _capture_error(record, exc)
+    return record
+
+
+def run_mcrand_case(
+    distribution: str,
+    n: int,
+    seed: int,
+    profile: Profile,
+) -> dict[str, Any]:
+    record = _base_record("mcrand", distribution, n, DTYPES[distribution])
+    record["seed"] = seed
+    try:
+        record["library_path"] = mcrand_library_path()
+        record["library_version"] = mcrand_version()
+        output = torch.empty(n, device="cuda", dtype=DTYPES[distribution])
+        replay = torch.empty_like(output)
+        with McrandGenerator(seed=seed) as generator:
+            generator.generate(distribution, output)
+        with McrandGenerator(seed=seed) as generator:
+            generator.generate(distribution, replay)
+        torch.cuda.synchronize()
+
+        validation = validate_output(output, replay, distribution)
+        record["validation"] = validation
+        if validation["status"] != "pass":
+            record["status"] = "validation_fail"
+            return record
+
+        timing_output = torch.empty_like(output)
+        timing_generator = McrandGenerator(seed=seed)
+        try:
+            record.update(measure(lambda: timing_generator.generate(distribution, timing_output), profile))
+        finally:
+            timing_generator.close()
         record.update(_throughput(record, output.element_size(), n))
         record["status"] = "pass"
     except Exception as exc:
@@ -297,21 +336,16 @@ def _run_torch_case(
 
 
 def _base_record(backend: str, distribution: str, n: int, dtype: torch.dtype) -> dict[str, Any]:
+    generators = {
+        "flagrand_public": "philox4x32_10",
+        "mcrand": "mcrand_native_philox4x32_10",
+        "ppu_curand": "curand_compat_philox4x32_10",
+        "ppu_acrand": "acrand_native_philox4x32_10",
+        "torch_rng_reference": "torch_default",
+    }
     return {
         "backend": backend,
-        "generator": (
-            "philox4x32_10"
-            if backend == "flagrand_public"
-            else (
-                "curand_compat_philox4x32_10"
-                if backend == "ppu_curand"
-                else (
-                    "acrand_native_philox4x32_10"
-                    if backend == "ppu_acrand"
-                    else "torch_default" if backend == "torch_rng_reference" else "not_applicable"
-                )
-            )
-        ),
+        "generator": generators.get(backend, "not_applicable"),
         "distribution": distribution,
         "n": n,
         "dtype": str(dtype).removeprefix("torch."),
@@ -348,12 +382,12 @@ def _capture_error(record: dict[str, Any], exc: Exception) -> None:
 
 def _preflight_split_shape(distribution: str) -> tuple[int, int]:
     if distribution in {"raw32", "uniform_f32"}:
-        return 17, 5
+        return 20, 5
     if distribution == "uniform_f64":
-        return 9, 3
+        return 10, 3
     if distribution in {"normal_f32", "lognormal_f32"}:
-        return 18, 6
-    return 18, 6
+        return 20, 6
+    return 20, 6
 
 
 def _libtuner_eligible(distribution: str, n: int) -> bool:

@@ -8,6 +8,12 @@ backends:
     triton: []
     deps: []
 
+  metax:
+    python: "3.10"
+    system_site_packages: true
+    triton: []
+    deps: []
+
   ascend-cann900:
     python: "3.11"
     triton:

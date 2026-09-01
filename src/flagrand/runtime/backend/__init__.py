@@ -190,7 +190,7 @@ def supports_cached_binary_launch(backend: str | None = None) -> bool:
         return False
     if backend is None:
         return get_vendor_info().cached_binary_launch
-    return backend in {"cuda", "ppu", "npu"}
+    return backend in {"cuda", "maca", "ppu", "npu"}
 
 
 def uses_portable_f32_math(backend: str | None = None) -> bool:

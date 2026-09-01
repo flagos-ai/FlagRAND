@@ -92,6 +92,7 @@ jobs:
           path: |
             ci_logs/
             nvidia_results/
+            muxi_results/
             corex_results/
             ppu_results/
             ascend_910c_results/

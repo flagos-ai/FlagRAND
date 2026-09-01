@@ -26,8 +26,18 @@ pytestmark = [pytest.mark.performance]
 
 
 def _performance_command(platform: str, profile: str, distribution: str) -> list[str]:
+    if platform in {"muxi", "maca"}:
+        platform = "metax"
     if platform == "nvidia":
         command = [sys.executable, "-m", "benchmark.run_nvidia"]
+    elif platform == "metax":
+        command = [
+            sys.executable,
+            "-m",
+            "benchmark.run_muxi",
+            "--skip-torch-reference",
+            "--with-mcrand",
+        ]
     elif platform == "ppu":
         command = [sys.executable, "-m", "benchmark.run_ppu", "--skip-torch-reference"]
     elif platform == "ascend_910c":
@@ -50,6 +60,8 @@ def _performance_command(platform: str, profile: str, distribution: str) -> list
             command.extend(("--profile", "full", "--acceptance-profile"))
         if platform == "ppu":
             command.append("--strict-acceptance")
+        elif platform == "metax":
+            command.extend(("--acceptance-baseline", "mcrand", "--strict-acceptance"))
         elif platform == "ascend_910c":
             command.extend(("--speedup-min", os.environ.get("FLAGRAND_SPEEDUP_MIN", "0.95")))
     else:
@@ -61,7 +73,7 @@ def _performance_command(platform: str, profile: str, distribution: str) -> list
 def test_hardware_performance_api(distribution: str) -> None:
     platform = os.environ.get("FLAGRAND_PERF_PLATFORM")
     if not platform:
-        pytest.skip("set FLAGRAND_PERF_PLATFORM=nvidia, ppu, or ascend_910c on a hardware runner")
+        pytest.skip("set FLAGRAND_PERF_PLATFORM=nvidia, metax, ppu, or ascend_910c on a hardware runner")
     profile = os.environ.get("FLAGRAND_PERF_PROFILE", "smoke")
     command = _performance_command(platform, profile, distribution)
     LOGGER.info("Running: %s", " ".join(command))
@@ -77,6 +89,8 @@ def test_hardware_performance_api(distribution: str) -> None:
     LOGGER.info("%s", result.stdout)
     assert result.returncode == 0, result.stdout
     if platform == "ppu" and profile == "acceptance":
+        assert "Acceptance status: pass" in result.stdout, result.stdout
+    if platform in {"metax", "muxi", "maca"} and profile == "acceptance":
         assert "Acceptance status: pass" in result.stdout, result.stdout
     if platform == "ascend_910c" and profile == "acceptance":
         pattern = rf"^API pass\s+{re.escape(distribution)}\s"

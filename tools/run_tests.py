@@ -45,6 +45,7 @@ DTYPE_MAP = {
 }
 PERFORMANCE_MODULES = {
     "nvidia": "benchmark.run_nvidia",
+    "metax": "benchmark.run_muxi",
     "ascend-cann900": "benchmark.run_ascend_910c",
     "iluvatar": "benchmark.run_corex",
     "thead": "benchmark.run_ppu",
@@ -53,6 +54,9 @@ PLATFORM_ALIASES = {
     "nvidia": "nvidia",
     "cuda": "nvidia",
     "h20": "nvidia",
+    "metax": "metax",
+    "muxi": "metax",
+    "maca": "metax",
     "ascend": "ascend-cann900",
     "ascend_910c": "ascend-cann900",
     "ascend-cann900": "ascend-cann900",
@@ -165,6 +169,10 @@ def supported_operator_ids(selected_platform: str) -> set[str]:
         from benchmark.ascend_910c.config import ASCEND_910C_SUPPORTED_DISTRIBUTIONS
 
         return set(ASCEND_910C_SUPPORTED_DISTRIBUTIONS)
+    if selected_platform == "metax":
+        from benchmark.muxi_matrix.config import ALL_DISTRIBUTIONS
+
+        return set(ALL_DISTRIBUTIONS)
     if selected_platform == "iluvatar":
         from benchmark.corex_matrix.config import ALL_DISTRIBUTIONS
 
@@ -324,6 +332,8 @@ def _accuracy_test_paths(operator: dict[str, Any], platform: str) -> list[Path]:
     paths = [ROOT / str(operator["accuracy_test"])]
     if platform == "nvidia":
         paths.extend(ROOT / str(path) for path in operator["platform_accuracy_tests"] if "nvidia" in str(path))
+    elif platform == "metax":
+        paths.extend(ROOT / str(path) for path in operator["platform_accuracy_tests"] if "metax" in str(path))
     return paths
 
 
@@ -419,6 +429,17 @@ def _performance_command(
         command.append("--skip-torch-reference")
         if profile == "acceptance":
             command.append("--acceptance-profile")
+    elif config.platform == "metax":
+        command.extend(("--skip-torch-reference", "--with-mcrand"))
+        if profile == "acceptance":
+            command.extend(
+                (
+                    "--acceptance-profile",
+                    "--acceptance-baseline",
+                    "mcrand",
+                    "--strict-acceptance",
+                )
+            )
     return command
 
 
@@ -457,6 +478,7 @@ def normalise_performance(operator_id: str, records: list[dict[str, Any]]) -> di
         for key in (
             "speedup_vs_nvidia_curand",
             "speedup_vs_corex_curand",
+            "speedup_vs_mcrand",
             "speedup_vs_ppu_acrand",
             "speedup_vs_ppu_curand",
             "speedup_vs_cann_aclnn",

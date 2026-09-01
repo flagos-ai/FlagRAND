@@ -12,6 +12,15 @@ case "$BACKEND" in
         export CPATH="$CUDA_HOME/include${CPATH:+:$CPATH}"
         export FLAGRAND_VENDOR=nvidia
         ;;
+    metax|muxi|maca)
+        export MACA_HOME="${MACA_HOME:-${MACA_PATH:-/opt/maca}}"
+        export MACA_PATH="$MACA_HOME"
+        export PATH="$MACA_HOME/bin:$PATH"
+        export LD_LIBRARY_PATH="$MACA_HOME/lib:${LD_LIBRARY_PATH:-}"
+        export LIBRARY_PATH="$MACA_HOME/lib:${LIBRARY_PATH:-}"
+        export CPATH="$MACA_HOME/include${CPATH:+:$CPATH}"
+        export FLAGRAND_VENDOR=metax
+        ;;
     ascend-cann900)
         set +u
         source /usr/local/Ascend/cann/set_env.sh
