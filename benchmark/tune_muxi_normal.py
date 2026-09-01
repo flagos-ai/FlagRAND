@@ -34,9 +34,7 @@ def main() -> int:
         baselines = {n: _measure_mcrand(distribution, n) for n in shapes}
         rows = []
         for block, warps in CONFIGS:
-            timings = {
-                n: _measure_flagrand(distribution, n, block_size=block, num_warps=warps) for n in shapes
-            }
+            timings = {n: _measure_flagrand(distribution, n, block_size=block, num_warps=warps) for n in shapes}
             speedups = [baselines[n] / timings[n] for n in shapes]
             rows.append(
                 {
