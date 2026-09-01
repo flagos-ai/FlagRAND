@@ -371,8 +371,28 @@ def generate_philox_uniform_f32(
     op_name: str = "generate_uniform",
     use_libtuner_kernel: bool = False,
 ) -> None:
-    seed_val, offset_val = _philox_launch_args(out, generator, op_name)
-    n = out.numel()
+    seed_val, offset_val, n = _philox_launch_args(out, generator, op_name)
+    _launch_philox_uniform_f32(
+        out,
+        seed_val,
+        offset_val,
+        n,
+        block_size,
+        num_warps,
+        use_libtuner_kernel,
+    )
+    generator.offset = offset_val + n
+
+
+def _launch_philox_uniform_f32(
+    out: torch.Tensor,
+    seed_val: int,
+    offset_val: int,
+    n: int,
+    block_size: int,
+    num_warps: int,
+    use_libtuner_kernel: bool = False,
+) -> None:
     if n == 0:
         return
 
@@ -395,6 +415,16 @@ def generate_philox_uniform_f32(
                 (out, seed_val, base_counter, n_counters),
                 (block_size,),
                 (num_warps,),
+                specialization_key=(
+                    out.device,
+                    out.dtype,
+                    out.data_ptr() % 16 == 0,
+                    seed_val,
+                    integer_specialization_key(base_counter),
+                    n_counters,
+                    block_size,
+                    num_warps,
+                ),
             )
     else:
         shift = offset_val % 4
@@ -421,7 +451,6 @@ def generate_philox_uniform_f32(
                 num_warps,
             ),
         )
-    generator.offset = offset_val + out.numel()
 
 
 def generate_philox_normal_f32(
@@ -435,7 +464,7 @@ def generate_philox_normal_f32(
     _portable_math: bool | None = None,
     use_libtuner_kernel: bool = False,
 ) -> None:
-    seed_val, offset_val = _philox_launch_args(
+    seed_val, offset_val, n = _philox_launch_args(
         out,
         generator,
         "generate_normal",
@@ -443,6 +472,7 @@ def generate_philox_normal_f32(
     )
     _launch_normal_like_f32(
         out,
+        n,
         seed_val,
         offset_val,
         mean,
@@ -453,7 +483,7 @@ def generate_philox_normal_f32(
         lognormal=False,
         use_libtuner_kernel=use_libtuner_kernel,
     )
-    generator.offset = offset_val + out.numel()
+    generator.offset = offset_val + n
 
 
 def generate_philox_lognormal_f32(
@@ -467,7 +497,7 @@ def generate_philox_lognormal_f32(
     _portable_math: bool | None = None,
     use_libtuner_kernel: bool = False,
 ) -> None:
-    seed_val, offset_val = _philox_launch_args(
+    seed_val, offset_val, n = _philox_launch_args(
         out,
         generator,
         "generate_lognormal",
@@ -475,6 +505,7 @@ def generate_philox_lognormal_f32(
     )
     _launch_normal_like_f32(
         out,
+        n,
         seed_val,
         offset_val,
         mean,
@@ -485,11 +516,12 @@ def generate_philox_lognormal_f32(
         lognormal=True,
         use_libtuner_kernel=use_libtuner_kernel,
     )
-    generator.offset = offset_val + out.numel()
+    generator.offset = offset_val + n
 
 
 def _launch_normal_like_f32(
     out: torch.Tensor,
+    n: int,
     seed_val: int,
     offset_val: int,
     mean: float,
@@ -501,7 +533,6 @@ def _launch_normal_like_f32(
     lognormal: bool,
     use_libtuner_kernel: bool,
 ) -> None:
-    n = out.numel()
     if n == 0:
         return
 
@@ -529,6 +560,20 @@ def _launch_normal_like_f32(
                 (out, seed_val, base_counter, n, n_counters, mean, stddev),
                 (block_size, portable_math),
                 (num_warps,),
+                specialization_key=(
+                    out.device,
+                    out.dtype,
+                    out.data_ptr() % 16 == 0,
+                    seed_val,
+                    integer_specialization_key(base_counter),
+                    n,
+                    n_counters,
+                    mean,
+                    stddev,
+                    block_size,
+                    portable_math,
+                    num_warps,
+                ),
             )
     else:
         shift = offset_val % 4
@@ -567,7 +612,7 @@ def _philox_launch_args(
     op_name: str,
     *,
     require_even: bool = False,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     n = out.numel()
     if not out.is_contiguous():
         raise ValueError(f"{op_name}: output must be contiguous.")
@@ -576,4 +621,4 @@ def _philox_launch_args(
     offset_val = int(getattr(generator, "offset", 0))
     if offset_val < 0:
         raise ValueError(f"{op_name}: Philox offset must be >= 0, got {offset_val}.")
-    return int(getattr(generator, "seed", 0)), offset_val
+    return int(getattr(generator, "seed", 0)), offset_val, n

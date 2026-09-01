@@ -12,8 +12,6 @@ from flagrand._curand_handle import (
 from flagrand._curand_philox_fast_path import try_generate_normal, try_generate_raw, try_generate_uniform
 from flagrand.runtime import SpecOpRegistrar, device
 
-SpecOpRegistrar(registry=globals(), vendor=device.vendor_name).apply()
-
 
 def generate(
     generator: CurandGenerator,
@@ -149,6 +147,9 @@ def _require_handled(handled: bool, op_name: str) -> None:
             f"{op_name}: this preview requires a Philox CurandGenerator, a "
             "contiguous CUDA/NPU output, and only block_size/num_warps options."
         )
+
+
+SpecOpRegistrar(registry=globals(), vendor=device.vendor_name).apply()
 
 
 __all__ = [

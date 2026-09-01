@@ -184,9 +184,9 @@ def generate_nvidia_philox_uniform_f64(
     block_size: int,
     num_warps: int,
 ) -> None:
-    seed, offset = _launch_args(out, generator, "generate_uniform")
-    _launch_uniform(out, seed, offset, block_size, num_warps)
-    generator.offset = offset + out.numel()
+    seed, offset, n = _launch_args(out, generator, "generate_uniform")
+    _launch_uniform(out, seed, offset, n, block_size, num_warps)
+    generator.offset = offset + n
 
 
 def generate_nvidia_philox_normal_f64(
@@ -231,8 +231,14 @@ def generate_nvidia_philox_lognormal_f64(
     )
 
 
-def _launch_uniform(out: torch.Tensor, seed: int, offset: int, block_size: int, num_warps: int) -> None:
-    n = out.numel()
+def _launch_uniform(
+    out: torch.Tensor,
+    seed: int,
+    offset: int,
+    n: int,
+    block_size: int,
+    num_warps: int,
+) -> None:
     if not n:
         return
     n_groups = (n + 3) // 4
@@ -245,6 +251,17 @@ def _launch_uniform(out: torch.Tensor, seed: int, offset: int, block_size: int, 
             (out, seed, base_subsequence, n, n_groups),
             (block_size,),
             (num_warps,),
+            specialization_key=(
+                out.device,
+                out.dtype,
+                out.data_ptr() % 16 == 0,
+                seed,
+                integer_specialization_key(base_subsequence),
+                n,
+                n_groups,
+                block_size,
+                num_warps,
+            ),
         )
     else:
         arguments = (out, seed, base_subsequence, n, n_groups)
@@ -281,8 +298,22 @@ def _generate_normal_like(
     lognormal: bool,
     op_name: str,
 ) -> None:
-    seed, offset = _launch_args(out, generator, op_name, require_even=True)
-    n = out.numel()
+    seed, offset, n = _launch_args(out, generator, op_name, require_even=True)
+    _launch_normal_like(out, seed, offset, n, mean, stddev, block_size, num_warps, lognormal)
+    generator.offset = offset + n
+
+
+def _launch_normal_like(
+    out: torch.Tensor,
+    seed: int,
+    offset: int,
+    n: int,
+    mean: float,
+    stddev: float,
+    block_size: int,
+    num_warps: int,
+    lognormal: bool,
+) -> None:
     if n:
         n_groups = (n + 3) // 4
         grid = (n_groups + block_size - 1) // block_size
@@ -295,6 +326,21 @@ def _generate_normal_like(
                 (out, seed, base_subsequence, n, n_groups, mean, stddev),
                 (lognormal, standard, block_size),
                 (num_warps,),
+                specialization_key=(
+                    out.device,
+                    out.dtype,
+                    out.data_ptr() % 16 == 0,
+                    seed,
+                    integer_specialization_key(base_subsequence),
+                    n,
+                    n_groups,
+                    mean,
+                    stddev,
+                    lognormal,
+                    standard,
+                    block_size,
+                    num_warps,
+                ),
             )
         else:
             arguments = (out, seed, base_subsequence, n, n_groups, mean, stddev)
@@ -322,7 +368,6 @@ def _generate_normal_like(
                     num_warps,
                 ),
             )
-    generator.offset = offset + n
 
 
 def _launch_args(
@@ -331,7 +376,7 @@ def _launch_args(
     op_name: str,
     *,
     require_even: bool = False,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     n = out.numel()
     if not out.is_contiguous():
         raise ValueError(f"{op_name}: output must be contiguous.")
@@ -340,4 +385,4 @@ def _launch_args(
     offset = int(generator.offset)
     if offset < 0:
         raise ValueError(f"{op_name}: Philox offset must be >= 0, got {offset}.")
-    return int(generator.seed), offset
+    return int(generator.seed), offset, n

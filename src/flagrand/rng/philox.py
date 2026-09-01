@@ -176,6 +176,29 @@ def generate_philox_raw_u32(
     if offset_val < 0:
         raise ValueError(f"Philox: offset must be >= 0, got {offset_val}.")
 
+    _launch_philox_raw_u32(
+        out,
+        seed_val,
+        offset_val,
+        n,
+        block_size,
+        num_warps,
+        use_libtuner_kernel,
+    )
+    if seed is None and offset is None:
+        generator.offset = offset_val + n
+    return out
+
+
+def _launch_philox_raw_u32(
+    out: torch.Tensor,
+    seed_val: int,
+    offset_val: int,
+    n: int,
+    block_size: int,
+    num_warps: int,
+    use_libtuner_kernel: bool = False,
+) -> None:
     if n:
         base_counter = offset_val // 4
         if offset_val % 4 == 0 and n % 4 == 0:
@@ -191,6 +214,16 @@ def generate_philox_raw_u32(
                     (out, seed_val, base_counter, n_counters),
                     (block_size,),
                     (num_warps,),
+                    specialization_key=(
+                        out.device,
+                        out.dtype,
+                        out.data_ptr() % 16 == 0,
+                        seed_val,
+                        integer_specialization_key(base_counter),
+                        n_counters,
+                        block_size,
+                        num_warps,
+                    ),
                 )
         else:
             shift = offset_val % 4
@@ -217,6 +250,3 @@ def generate_philox_raw_u32(
                     num_warps,
                 ),
             )
-    if seed is None and offset is None:
-        generator.offset = offset_val + n
-    return out
