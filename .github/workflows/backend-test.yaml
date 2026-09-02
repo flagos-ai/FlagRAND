@@ -30,14 +30,44 @@ permissions:
   contents: read
 
 jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pack FlagRAND source
+        shell: bash
+        run: tar --exclude=.git -czf "$RUNNER_TEMP/flagrand-source.tar.gz" .
+
+      - name: Upload FlagRAND source
+        uses: actions/upload-artifact@v4
+        with:
+          name: flagrand-source-${{ inputs.backend }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/flagrand-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
   test:
+    needs: source
     runs-on: ${{ inputs.runner_label }}
     timeout-minutes: 180
     concurrency:
       group: flagrand-${{ inputs.backend }}-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v4
+      - name: Download FlagRAND source
+        uses: actions/download-artifact@v4
+        with:
+          name: flagrand-source-${{ inputs.backend }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/flagrand-source-${{ inputs.backend }}
+
+      - name: Restore FlagRAND source
+        shell: bash
+        run: |
+          find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+          tar -xzf "$RUNNER_TEMP/flagrand-source-${{ inputs.backend }}/flagrand-source.tar.gz" \
+            -C "$GITHUB_WORKSPACE"
+
       - uses: ./.github/actions/setup-flagrand
         with:
           backend: ${{ inputs.backend }}
