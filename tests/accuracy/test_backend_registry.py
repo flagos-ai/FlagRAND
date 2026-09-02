@@ -35,6 +35,7 @@ def test_public_curand_uses_selected_vendor_override() -> None:
     public_module = {
         "nvidia": "flagrand.runtime.backend._nvidia.ops",
         "metax": "flagrand.runtime.backend._metax.ops",
+        "ascend": "flagrand.runtime.backend._ascend.ops",
     }.get(device.vendor_name, "flagrand.curand")
     for name in (
         "generate",

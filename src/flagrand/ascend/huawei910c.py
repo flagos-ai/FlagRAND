@@ -154,7 +154,23 @@ def generate_huawei910c_raw_uniform_f32_fast(
 ) -> torch.Tensor:
     """Launch the common-case 910C raw or Uniform kernel with minimal host work."""
 
-    count = out.numel()
+    return _generate_huawei910c_raw_uniform_f32_prepared(
+        out,
+        generator,
+        out.numel(),
+        uniform=uniform,
+        num_warps=num_warps,
+    )
+
+
+def _generate_huawei910c_raw_uniform_f32_prepared(
+    out: torch.Tensor,
+    generator: Any,
+    count: int,
+    *,
+    uniform: bool,
+    num_warps: int,
+) -> torch.Tensor:
     if count == 0:
         return out
 
@@ -217,7 +233,27 @@ def generate_huawei910c_normal_f32_fast(
     epoch retain the fully general windowed implementation below.
     """
 
-    count = out.numel()
+    return _generate_huawei910c_normal_f32_prepared(
+        out,
+        generator,
+        out.numel(),
+        mean=mean,
+        stddev=stddev,
+        lognormal=lognormal,
+        num_warps=num_warps,
+    )
+
+
+def _generate_huawei910c_normal_f32_prepared(
+    out: torch.Tensor,
+    generator: Any,
+    count: int,
+    *,
+    mean: float,
+    stddev: float,
+    lognormal: bool,
+    num_warps: int,
+) -> torch.Tensor:
     if count == 0:
         return out
 
@@ -242,6 +278,8 @@ def generate_huawei910c_normal_f32_fast(
     effective_seed_hi = _signed_i32(seed_hi ^ epoch_key)
     counter_low = _signed_i32(counter_low)
     block = LOGNORMAL_BLOCK if lognormal else NORMAL_BLOCK
+    mean_value = float(mean)
+    stddev_value = float(stddev)
 
     _NORMAL_LAUNCHER.launch(
         (count + block - 1) // block,
@@ -251,8 +289,8 @@ def generate_huawei910c_normal_f32_fast(
             seed_lo,
             effective_seed_hi,
             counter_low,
-            float(mean),
-            float(stddev),
+            mean_value,
+            stddev_value,
         ),
         (lognormal, block),
         (num_warps,),
@@ -265,8 +303,8 @@ def generate_huawei910c_normal_f32_fast(
             effective_seed_hi,
             counter_low == 1,
             counter_low % 16 == 0,
-            float(mean),
-            float(stddev),
+            mean_value,
+            stddev_value,
             lognormal,
             block,
             num_warps,

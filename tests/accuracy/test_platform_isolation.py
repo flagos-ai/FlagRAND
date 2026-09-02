@@ -109,6 +109,20 @@ def test_nvidia_backend_owns_the_complete_public_dispatch() -> None:
     }.issubset(functions)
 
 
+def test_ascend_backend_owns_the_complete_public_dispatch() -> None:
+    tree = ast.parse(ASCEND_OPS_SOURCE.read_text(), filename=str(ASCEND_OPS_SOURCE))
+    functions = {node.name for node in tree.body if isinstance(node, ast.FunctionDef)}
+    assert {
+        "generate",
+        "generate_uniform",
+        "generate_uniform_double",
+        "generate_normal",
+        "generate_normal_double",
+        "generate_lognormal",
+        "generate_lognormal_double",
+    }.issubset(functions)
+
+
 def test_metax_backend_owns_the_complete_public_dispatch() -> None:
     tree = ast.parse(METAX_OPS_SOURCE.read_text(), filename=str(METAX_OPS_SOURCE))
     functions = {node.name for node in tree.body if isinstance(node, ast.FunctionDef)}
