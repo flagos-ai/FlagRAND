@@ -26,7 +26,7 @@ if ! command -v uv >/dev/null 2>&1; then
     ARCH=$(uname -m)
     mkdir -p "$HOME/.local/bin"
     curl -sSf "https://resource.flagos.net/repository/flagos-filestore/utils/uv-${ARCH}-${UV_VERSION}-linux-gnu.tar.gz" \
-        | tar xz -C "$HOME/.local/bin"
+        | tar xz --strip-components=1 -C "$HOME/.local/bin"
 fi
 
 if [[ "$SYSTEM_SITE_PACKAGES" == "true" ]]; then
