@@ -7,6 +7,7 @@ import torch
 from triton.runtime import driver
 
 from flagrand import curand
+from flagrand.metax.launcher import MetaXKernelLauncher
 from flagrand.runtime import current_backend, current_vendor
 
 METAX_AVAILABLE = torch.cuda.is_available() and current_vendor() == "metax"
@@ -62,3 +63,36 @@ def test_metax_public_api_uses_current_stream() -> None:
     stream.synchronize()
 
     assert torch.equal(actual, expected)
+
+
+@pytest.mark.raw32
+def test_metax_launcher_supports_jit_without_legacy_binder() -> None:
+    calls = []
+
+    class ModernJITFunction:
+        def __getitem__(self, grid):
+            def run(*args, **kwargs):
+                calls.append((grid, args, kwargs))
+                return "compiled"
+
+            return run
+
+    launcher = MetaXKernelLauncher(
+        ModernJITFunction(),
+        constexpr_names=("BLOCK",),
+    )
+    result = launcher.launch(
+        3,
+        ("output", 17),
+        (128,),
+        (4,),
+    )
+
+    assert result == "compiled"
+    assert calls == [
+        (
+            (3, 1, 1),
+            ("output", 17),
+            {"BLOCK": 128, "num_warps": 4},
+        )
+    ]

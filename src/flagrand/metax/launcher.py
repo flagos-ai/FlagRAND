@@ -34,11 +34,15 @@ class MetaXKernelLauncher:
     ) -> Any:
         del specialization_key
         grid3 = _normalize_grid(grid)
+        kwargs = dict(zip(self._constexpr_names, constexpr_values))
+        kwargs.update(zip(self._option_names, option_values))
+
+        if not hasattr(self._kernel, "binder"):
+            return self._kernel[grid3](*args, **kwargs)
+
         if self._kernel.binder is None:
             self._kernel.create_binder()
 
-        kwargs = dict(zip(self._constexpr_names, constexpr_values))
-        kwargs.update(zip(self._option_names, option_values))
         kwargs["debug"] = getattr(self._kernel, "debug", False)
         _, sig_and_spec, bound_constexprs, non_constexpr_values, excess_kwargs = self._kernel.binder(
             *args,
