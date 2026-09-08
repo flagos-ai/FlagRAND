@@ -48,7 +48,7 @@ def build_acceptance_summary(
     shape_map: dict[str, tuple[int, ...]],
     baseline: str,
     min_speedup: float,
-    max_speedup: float,
+    max_speedup: float | None = None,
 ) -> dict[str, Any]:
     speedup_key = f"speedup_vs_{baseline}"
     rows = []
@@ -75,7 +75,8 @@ def build_acceptance_summary(
             )
         if points:
             api_speedup = sum(point["speedup"] for point in points) / len(points)
-            status = "pass" if min_speedup <= api_speedup <= max_speedup else "warn"
+            meets_target = api_speedup >= min_speedup and (max_speedup is None or api_speedup <= max_speedup)
+            status = "pass" if meets_target else "warn"
         else:
             api_speedup = None
             status = "missing"
@@ -94,7 +95,7 @@ def build_acceptance_summary(
         "baseline": baseline,
         "speedup_key": speedup_key,
         "min_speedup": float(min_speedup),
-        "max_speedup": float(max_speedup),
+        "max_speedup": float(max_speedup) if max_speedup is not None else None,
         "api_count": len(rows),
         "pass_count": pass_count,
         "status": "pass" if pass_count == len(rows) else "warn",
@@ -103,11 +104,17 @@ def build_acceptance_summary(
     }
 
 
+def format_acceptance_target(min_speedup: float, max_speedup: float | None) -> str:
+    if max_speedup is None:
+        return f">={min_speedup:.2f}"
+    return f"[{min_speedup:.2f}, {max_speedup:.2f}]"
+
+
 def print_acceptance_summary(summary: dict[str, Any]) -> None:
     LOGGER.info(
         "Acceptance speedup summary "
         f"baseline={summary['baseline']} "
-        f"target=[{summary['min_speedup']:.2f}, {summary['max_speedup']:.2f}] "
+        f"target={format_acceptance_target(summary['min_speedup'], summary['max_speedup'])} "
         "cross_api_average=disabled"
     )
     for row in summary["rows"]:
@@ -127,7 +134,7 @@ def print_acceptance_summary(summary: dict[str, Any]) -> None:
         )
     LOGGER.info(
         f"Acceptance status: {summary['status']} "
-        f"({summary['pass_count']}/{summary['api_count']} APIs in target range)"
+        f"({summary['pass_count']}/{summary['api_count']} APIs meeting target)"
     )
 
 
@@ -249,9 +256,9 @@ def _render_acceptance_summary(summary: dict[str, Any]) -> list[str]:
         "## Acceptance Speedup Summary",
         "",
         f"- Baseline: `{summary['baseline']}`",
-        f"- Target range: `{summary['min_speedup']:.2f}x` to `{summary['max_speedup']:.2f}x`",
+        f"- Per-API mean speedup target: `{format_acceptance_target(summary['min_speedup'], summary['max_speedup'])}`",
         "- Cross-API average: `not reported`",
-        (f"- Status: `{summary['status']}` " f"(`{summary['pass_count']}`/`{summary['api_count']}` APIs in range)"),
+        (f"- Status: `{summary['status']}` " f"(`{summary['pass_count']}`/`{summary['api_count']}` APIs meeting target)"),
         "",
         "| API | Shapes | Shape speedups | API speedup | Status |",
         "|---|---:|---:|---:|---:|",

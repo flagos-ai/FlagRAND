@@ -10,6 +10,7 @@ if __name__ == "__main__":
             default_skip_ppu_curand=False,
             default_skip_ppu_acrand=False,
             default_acceptance_baseline="ppu_acrand",
+            default_acceptance_max=1.50,
             platform_name="PPU",
         )
     )

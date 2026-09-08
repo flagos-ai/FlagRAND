@@ -222,17 +222,17 @@ python3 -m benchmark.run_muxi \
   --acceptance-baseline mcrand \
   --with-mcrand \
   --acceptance-min 0.95 \
-  --acceptance-max 1.50 \
   --strict-acceptance \
   --skip-torch-reference
 ```
 
 固定 acceptance shape 集包含 108 个 FlagRAND case 和 108 个 mcRAND case，共 216 条记录。
 性能判定先计算每个 shape 的 `mcRAND total_ms_median / FlagRAND total_ms_median`，再在单个
-API 内取算术平均，不计算跨 API 平均值。通过时输出包含：
+API 内取算术平均，不计算跨 API 平均值。每个 API 平均加速比 `>= 0.95x` 即通过，
+不要求每个 shape 单独达标；不设加速比上限，也不因高加速比额外提示。通过时输出包含：
 
 ```text
-Acceptance status: pass (7/7 APIs in target range)
+Acceptance status: pass (7/7 APIs meeting target)
 Completed 216 records with 0 failure(s).
 ```
 

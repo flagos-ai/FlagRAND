@@ -13,6 +13,7 @@ from benchmark.muxi_matrix.config import parse_args
 from benchmark.muxi_matrix.reporting import (
     build_acceptance_summary,
     create_run_directory,
+    format_acceptance_target,
     print_acceptance_summary,
     print_record,
     write_results,
@@ -29,6 +30,7 @@ def main(
     default_skip_ppu_curand: bool = True,
     default_skip_ppu_acrand: bool = True,
     default_acceptance_baseline: str = "mcrand",
+    default_acceptance_max: float | None = None,
     platform_name: str = "muxi",
 ) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
@@ -39,6 +41,7 @@ def main(
         default_skip_ppu_curand=default_skip_ppu_curand,
         default_skip_ppu_acrand=default_skip_ppu_acrand,
         default_acceptance_baseline=default_acceptance_baseline,
+        default_acceptance_max=default_acceptance_max,
         platform_name=platform_name,
     )
     run_directory = create_run_directory(args.results_dir, args.profile_config.name)
@@ -205,10 +208,9 @@ def _iter_matrix_cases(args: Any) -> list[tuple[str, int]]:
 
 def _print_acceptance_shape_plan(args: Any) -> None:
     LOGGER.info(
-        "Acceptance shape plan baseline=%s target=[%.2f, %.2f]",
+        "Acceptance shape plan baseline=%s target=%s",
         args.acceptance_baseline,
-        args.acceptance_min,
-        args.acceptance_max,
+        format_acceptance_target(args.acceptance_min, args.acceptance_max),
     )
     for distribution in args.distributions:
         shapes = ",".join(str(n) for n in args.acceptance_shape_map[distribution])

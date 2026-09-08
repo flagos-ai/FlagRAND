@@ -326,6 +326,9 @@ Preflight: pass
 统一 runner 以 `metax` 为 canonical backend（`muxi` 和 `maca` 仅作别名），并使用 mcRAND
 作为七个 Host API 的原生性能 baseline：
 
+性能验收以每个 API 全部实测 shape 加速比的算术平均值 `>= 0.95x` 为通过条件，
+不要求每个 shape 单独达标，不计算跨 API 平均值。加速比不设上限，也不因高加速比额外提示。
+
 ```bash
 export FLAGRAND_RUN_ID="metax_$(date +%Y%m%d_%H%M%S)"
 PYTHON_BIN=python3 \
@@ -346,13 +349,12 @@ python3 -m benchmark.run_muxi \
   --acceptance-baseline mcrand \
   --with-mcrand \
   --acceptance-min 0.95 \
-  --acceptance-max 1.50 \
   --strict-acceptance \
   --skip-torch-reference
 ```
 
 固定 shape 集包含 108 个 FlagRAND case 和 108 个 mcRAND case，共 216 条记录。通过时
-输出包含 `Acceptance status: pass (7/7 APIs in target range)` 和
+输出包含 `Acceptance status: pass (7/7 APIs meeting target)` 和
 `Completed 216 records with 0 failure(s).`
 
 pre-main 沐曦分支已产生过上述 216 条通过结果；将 NVIDIA 新 main 与 MetaX 独立分流

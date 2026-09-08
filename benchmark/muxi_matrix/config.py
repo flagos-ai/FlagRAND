@@ -179,6 +179,7 @@ def parse_args(
     default_skip_ppu_curand: bool = True,
     default_skip_ppu_acrand: bool = True,
     default_acceptance_baseline: str = "mcrand",
+    default_acceptance_max: float | None = None,
     platform_name: str = "muxi",
 ) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -213,18 +214,18 @@ def parse_args(
         "--acceptance-min",
         type=float,
         default=0.95,
-        help="Lower bound for acceptance speedup reporting.",
+        help="Minimum per-API arithmetic-mean speedup; individual shapes are not thresholded.",
     )
     parser.add_argument(
         "--acceptance-max",
         type=float,
-        default=1.50,
-        help="Upper bound for acceptance speedup reporting.",
+        default=default_acceptance_max,
+        help="Optional per-API arithmetic-mean speedup upper bound; MetaX has none by default.",
     )
     parser.add_argument(
         "--strict-acceptance",
         action="store_true",
-        help="Return a nonzero status when an acceptance API misses the configured range.",
+        help="Return a nonzero status when a per-API arithmetic-mean speedup misses the target.",
     )
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument(
@@ -280,9 +281,9 @@ def parse_args(
     parser.set_defaults(skip_ppu_acrand=default_skip_ppu_acrand)
     args = parser.parse_args()
     args.distributions = _parse_distributions(args.distributions)
-    if args.acceptance_min <= 0.0 or args.acceptance_max <= 0.0:
-        raise SystemExit("--acceptance-min and --acceptance-max must be positive.")
-    if args.acceptance_min > args.acceptance_max:
+    if args.acceptance_min <= 0.0:
+        raise SystemExit("--acceptance-min must be positive.")
+    if args.acceptance_max is not None and args.acceptance_min > args.acceptance_max:
         raise SystemExit("--acceptance-min must be <= --acceptance-max.")
     if args.strict_acceptance and not args.acceptance_profile:
         raise SystemExit("--strict-acceptance requires --acceptance-profile.")
