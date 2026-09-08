@@ -6,8 +6,6 @@
 
 基础镜像和 FlagTree 安装版本来自
 [FlagTree 官方 MetaX 手册](https://github.com/flagos-ai/FlagTree/wiki/User-manual-for-metax)。
-安装包索引已确认存在 `flagtree-0.6.1+metax3.6-cp312-cp312-linux_x86_64.whl`。
-这是可复现的新环境配置；原验收截图没有给出 FlagTree/FlagGems 的准确版本，不能视为原环境的逐包复制。
 
 ## 构建
 
