@@ -249,8 +249,11 @@ bash docker/metax/run.sh
 docker start -ai flagrand-muxi-dev
 ```
 
-验收使用基础镜像预装的 MACA PyTorch/Triton，不在容器内安装 NVIDIA 版 PyTorch 或替换
-Triton。`flagtree-metax3.6-...-202606-base` 镜像未提供本流程需要的 `torch`，不用于本项验收。
+本节上述流程使用基础镜像预装的 MACA PyTorch/Triton。
+如需验证 Python 3.12 / Triton 3.6 环境，使用
+[FlagTree MetaX 容器指南](../../docker/metax/README.flagtree.md)中的
+`docker/metax/Dockerfile.flagtree`。该 py312 基础镜像的 Conda Python 已提供 Torch，
+还需安装 `flagtree===0.6.1+metax3.6` 来提供 Triton。
 
 ### 5.3 检查运行环境和 mcRAND
 

@@ -111,9 +111,11 @@ export PYTHON_BIN=python3
 mkdir -p "$TRITON_CACHE_DIR" "$XDG_CACHE_HOME"
 ```
 
-不要执行 `pip install triton` 或安装 NVIDIA 版 PyTorch。基础镜像自带的 MACA
-PyTorch/Triton 才是这里需要验证的运行时。`flagtree-metax3.6-...-202606-base`
-镜像未提供本流程需要的 `torch`，不用于本项验收。
+上述 MACA 3.7.0 镜像使用其预装的 PyTorch/Triton。
+Python 3.12 / Triton 3.6 的新环境使用
+[FlagTree MetaX 容器配置](../../../docker/metax/README.flagtree.md)。该 py312 基础镜像的
+`/opt/conda/bin/python` 已提供 Torch，但需要安装官方 MetaX 版 FlagTree 来提供 Triton；
+新 Dockerfile 已包含这一步。
 
 ## 3. 确认导入来源
 

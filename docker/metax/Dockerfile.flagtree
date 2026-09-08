@@ -1,0 +1,44 @@
+# MetaX C550 / Python 3.12 / FlagTree with the Triton 3.6 backend.
+# https://github.com/flagos-ai/FlagTree/wiki/User-manual-for-metax
+ARG METAX_BASE_IMAGE=harbor.baai.ac.cn/flagtree/flagtree-metax3.6-py312-torch2.8.0-metax3.7.2.0-ubuntu24.04:202606-base
+FROM ${METAX_BASE_IMAGE}
+
+USER root
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ENV PATH=/opt/conda/bin:${PATH}
+
+ARG FLAGTREE_VERSION=0.6.1+metax3.6
+ARG FLAGTREE_INDEX_URL=https://resource.flagos.net/repository/flagos-pypi-hosted/simple
+ARG PYTHON_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
+
+RUN /opt/conda/bin/python -m pip install --no-cache-dir \
+        --index-url "${PYTHON_INDEX_URL}" \
+        "PyYAML>=6.0,<7" \
+        "pytest>=8.0,<10"
+
+RUN /opt/conda/bin/python -m pip install --no-cache-dir \
+        --only-binary=:all: --no-deps \
+        --index-url "${FLAGTREE_INDEX_URL}" \
+        "flagtree===${FLAGTREE_VERSION}"
+
+RUN /opt/conda/bin/python -c \
+    'import sys, importlib.metadata, torch, triton; print("Python:", sys.executable, sys.version); print("Torch:", torch.__version__); print("FlagTree:", importlib.metadata.version("flagtree")); print("Triton:", triton.__version__, triton.__file__)'
+
+COPY . /workspace/FlagRAND
+COPY docker/metax/entrypoint.sh /usr/local/bin/flagrand-metax-entrypoint
+RUN chmod 0755 /usr/local/bin/flagrand-metax-entrypoint
+
+ENV MACA_HOME=/opt/maca \
+    MACA_PATH=/opt/maca \
+    FLAGRAND_VENDOR=metax \
+    FLAGRAND_MCRAND_PATH=/opt/maca/lib/libmcrand.so \
+    FLAGRAND_USE_LIBTUNER=0 \
+    PYTHONPATH=/workspace/FlagRAND/src:/workspace/FlagRAND \
+    PYTHON_BIN=/opt/conda/bin/python \
+    TRITON_CACHE_DIR=/workspace/FlagRAND/.triton_cache_py312 \
+    XDG_CACHE_HOME=/workspace/FlagRAND/.cache
+
+WORKDIR /workspace/FlagRAND
+ENTRYPOINT ["/usr/local/bin/flagrand-metax-entrypoint"]
+CMD ["/bin/bash"]
