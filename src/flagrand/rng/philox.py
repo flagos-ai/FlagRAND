@@ -41,7 +41,7 @@ def _philox_kernel(out_ptr, seed, base_counter, n, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offs < n
-    counter = base_counter + offs
+    counter = tl.cast(base_counter, tl.uint64) + offs.to(tl.uint64)
     r0, r1, r2, r3 = _philox_generate(seed, counter)
     # Build a (BLOCK, 4) tile and store with one 2D op so the compiler can
     # emit 16-byte vector stores (4 contiguous uint32 per counter).
@@ -69,7 +69,7 @@ def _philox_generic_kernel(
     group = pid * BLOCK + tl.arange(0, BLOCK)
     group_mask = group < n_groups
 
-    r0, r1, r2, r3 = _philox_window4(seed, base_counter + group, SHIFT)
+    r0, r1, r2, r3 = _philox_window4(seed, tl.cast(base_counter, tl.uint64) + group.to(tl.uint64), SHIFT)
     base = group * 4
     tl.store(out_ptr + base + 0, r0.to(tl.int32, bitcast=True), mask=group_mask & (base + 0 < n))
     tl.store(out_ptr + base + 1, r1.to(tl.int32, bitcast=True), mask=group_mask & (base + 1 < n))
@@ -98,7 +98,7 @@ if HAS_LIBTUNER:
         pid = tl.program_id(0)
         offs = pid * BLOCK + tl.arange(0, BLOCK)
         mask = offs < n_counters
-        counter = base_counter + offs
+        counter = tl.cast(base_counter, tl.uint64) + offs.to(tl.uint64)
         r0, r1, r2, r3 = _philox_generate(seed, counter)
         r02 = tl.join(r0, r2)
         r13 = tl.join(r1, r3)

@@ -49,8 +49,11 @@ PERFORMANCE_MODULES = {
     "ascend-cann900": "benchmark.run_ascend_910c",
     "iluvatar": "benchmark.run_corex",
     "thead": "benchmark.run_ppu",
+    "hygon": "benchmark.run_hygon",
 }
 PLATFORM_ALIASES = {
+    "hygon": "hygon",
+    "hcu": "hygon",
     "nvidia": "nvidia",
     "cuda": "nvidia",
     "h20": "nvidia",
@@ -161,6 +164,10 @@ def detect_platform() -> str:
 
 
 def supported_operator_ids(selected_platform: str) -> set[str]:
+    if selected_platform == "hygon":
+        from benchmark.hygon_matrix.config import ALL_DISTRIBUTIONS
+
+        return set(ALL_DISTRIBUTIONS)
     if selected_platform == "nvidia":
         from benchmark.nvidia_matrix.config import ALL_DISTRIBUTIONS
 
@@ -237,6 +244,11 @@ def worker_env(platform: str, gpu_id: int) -> dict[str, str]:
     if platform == "ascend-cann900":
         env["ASCEND_RT_VISIBLE_DEVICES"] = device
         env["NPU_VISIBLE_DEVICES"] = device
+    elif platform == "hygon":
+        visible = env.get("HIP_VISIBLE_DEVICES", env.get("CUDA_VISIBLE_DEVICES"))
+        selected = visible.split(",")[gpu_id] if visible else device
+        env["HIP_VISIBLE_DEVICES"] = selected
+        env["CUDA_VISIBLE_DEVICES"] = selected
     elif platform == "iluvatar":
         env["ILUVATAR_VISIBLE_DEVICES"] = device
         env["CUDA_VISIBLE_DEVICES"] = device
@@ -326,6 +338,8 @@ def parse_accuracy_data(result_file: Path) -> dict[str, Any]:
 
 
 def _accuracy_test_paths(operator: dict[str, Any], platform: str) -> list[Path]:
+    if platform == "hygon":
+        return [ROOT / str(operator["accuracy_test"]), ROOT / "tests/accuracy/test_philox_hygon.py"]
     if platform == "ascend-cann900":
         matches = [path for path in operator["platform_accuracy_tests"] if "ascend_910c" in path]
         return [ROOT / matches[0]]
@@ -407,7 +421,7 @@ def _performance_command(
     profile = config.profile
     benchmark_profile = (
         "matrix"
-        if config.platform in {"iluvatar", "nvidia"} and profile == "acceptance"
+        if config.platform in {"iluvatar", "nvidia", "hygon"} and profile == "acceptance"
         else ("full" if profile == "acceptance" else profile)
     )
     command = [
@@ -476,6 +490,7 @@ def normalise_performance(operator_id: str, records: list[dict[str, Any]]) -> di
         latency = float(record["total_ms_median"])
         speedup = None
         for key in (
+            "speedup_vs_hygon_hiprand",
             "speedup_vs_nvidia_curand",
             "speedup_vs_corex_curand",
             "speedup_vs_mcrand",

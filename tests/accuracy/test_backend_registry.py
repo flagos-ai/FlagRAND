@@ -15,7 +15,10 @@ def test_device_detector_activates_matching_backend_state() -> None:
 
 def test_registry_contains_supported_vendor_descriptors() -> None:
     descriptors = {info.vendor_name: info for info in get_vendor_infos()}
-    assert set(descriptors) == {"nvidia", "metax", "iluvatar", "ascend", "thead"}
+    assert set(descriptors) == {"nvidia", "metax", "iluvatar", "ascend", "thead", "hygon"}
+    assert descriptors["hygon"].device_query_cmd == "hy-smi"
+    assert descriptors["hygon"].portable_f32_math
+    assert descriptors["hygon"].cached_binary_launch
     assert descriptors["iluvatar"].device_query_cmd == "ixsmi"
     assert descriptors["ascend"].device_query_cmd == "npu-smi info"
     assert descriptors["thead"].device_query_cmd == "ppu-smi"
@@ -31,7 +34,9 @@ def test_public_curand_uses_selected_vendor_override() -> None:
     }.get(device.vendor_name, "flagrand._curand_philox_fast_path")
     assert curand.try_generate_raw.__module__ == expected_module
     assert curand.try_generate_uniform.__module__ == expected_module
-    assert curand.try_generate_normal.__module__ == expected_module
+    assert curand.try_generate_normal.__module__ == (
+        "flagrand.runtime.backend._hygon.ops" if device.vendor_name == "hygon" else expected_module
+    )
     public_module = {
         "nvidia": "flagrand.runtime.backend._nvidia.ops",
         "metax": "flagrand.runtime.backend._metax.ops",

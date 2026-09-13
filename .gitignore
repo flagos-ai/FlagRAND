@@ -21,3 +21,5 @@ ascend_910c_results/
 corex_results/
 *.prof
 *.tar.gz
+hygon_results/
+ci_logs/

@@ -362,6 +362,18 @@ pre-main 沐曦分支已产生过上述 216 条通过结果；将 NVIDIA 新 mai
 
 完成后执行第 6 节校验结果。
 
+## 海光 BW1000 / DTK
+
+海光的完整离线交付命令、原生 hipRAND 基准、七接口矩阵和统一输出说明见
+[海光交付指南](../usage/non-nvidia/hygon.md#complete-offline-delivery)。使用已有 DTK
+环境时不需要 GitHub 网络，也不需要 FlagOS 网页权限：
+
+```bash
+PYTHON_BIN=python3 FLAGRAND_RUN_ID=hygon_acceptance \
+  bash scripts/delivery/run_hygon.sh
+export SUMMARY="$PWD/hygon_results/ci_hygon_acceptance/summary.json"
+```
+
 ## 6. 校验 summary.json
 
 以下命令使用前一节设置的 `SUMMARY` 路径，检查文件、FlagOS schema、交付项名称和数学正确性结果，

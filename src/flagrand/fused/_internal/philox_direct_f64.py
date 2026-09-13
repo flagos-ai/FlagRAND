@@ -41,7 +41,7 @@ def _philox_uniform_f64_kernel(out_ptr, seed, base_counter, n, n_counters, BLOCK
     mask = offs < n_counters
     base = offs * 2
 
-    r0, r1, r2, r3 = _philox_generate(seed, base_counter + offs)
+    r0, r1, r2, r3 = _philox_generate(seed, tl.cast(base_counter, tl.uint64) + offs.to(tl.uint64))
     u0 = uint32_pair_to_uniform64_curand_compat(r0, r1)
     u1 = uint32_pair_to_uniform64_curand_compat(r2, r3)
 
@@ -64,7 +64,7 @@ def _philox_uniform_f64_generic_kernel(
     group = pid * BLOCK + tl.arange(0, BLOCK)
     group_mask = group < n_groups
 
-    r0, r1, r2, r3 = _philox_window4(seed, base_counter + group, SHIFT)
+    r0, r1, r2, r3 = _philox_window4(seed, tl.cast(base_counter, tl.uint64) + group.to(tl.uint64), SHIFT)
     u0 = uint32_pair_to_uniform64_curand_compat(r0, r1)
     u1 = uint32_pair_to_uniform64_curand_compat(r2, r3)
 
@@ -91,7 +91,7 @@ def _philox_normal_f64_kernel(
     mask = offs < n_counters
     base = offs * 2
 
-    r0, r1, r2, r3 = _philox_generate(seed, base_counter + offs)
+    r0, r1, r2, r3 = _philox_generate(seed, tl.cast(base_counter, tl.uint64) + offs.to(tl.uint64))
     u0 = uint32_pair_to_uniform64_curand_compat(r0, r1)
     u1 = uint32_pair_to_uniform64_curand_compat(r2, r3)
     n0, n1 = uniform_to_normal_fast_f64(u0, u1)
@@ -129,7 +129,7 @@ def _philox_normal_f64_generic_kernel(
     group = pid * BLOCK + tl.arange(0, BLOCK)
     group_mask = group < n_groups
 
-    r0, r1, r2, r3 = _philox_window4(seed, base_counter + group, SHIFT)
+    r0, r1, r2, r3 = _philox_window4(seed, tl.cast(base_counter, tl.uint64) + group.to(tl.uint64), SHIFT)
     u0 = uint32_pair_to_uniform64_curand_compat(r0, r1)
     u1 = uint32_pair_to_uniform64_curand_compat(r2, r3)
     n0, n1 = uniform_to_normal_fast_f64(u0, u1)
@@ -177,7 +177,7 @@ if HAS_LIBTUNER:
         mask = offs < n_counters
         base = offs * 2
 
-        r0, r1, r2, r3 = _philox_generate(seed, base_counter + offs)
+        r0, r1, r2, r3 = _philox_generate(seed, tl.cast(base_counter, tl.uint64) + offs.to(tl.uint64))
         u0 = uint32_pair_to_uniform64_curand_compat(r0, r1)
         u1 = uint32_pair_to_uniform64_curand_compat(r2, r3)
         n0, n1 = uniform_to_normal_fast_f64(u0, u1)

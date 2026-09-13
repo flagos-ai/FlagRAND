@@ -26,5 +26,12 @@
     "label": "vendor/THead",
     "gpu_check": "tools/gpu_check_thead.sh",
     "enabled": true
+  },
+  {
+    "backend": "hygon",
+    "runner_label": "hygon",
+    "label": "vendor/Hygon",
+    "gpu_check": "tools/gpu_check_hygon.sh",
+    "enabled": true
   }
 ]

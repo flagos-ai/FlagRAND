@@ -68,7 +68,16 @@ PY
 "$PYTHON_BIN" tools/validate_operator_registry.py | tee "$LOG_DIR/operator_registry.log"
 "$PYTHON_BIN" -m pytest -q tests/accuracy/test_unified_runner.py | tee "$LOG_DIR/unified-runner-tests.log"
 
+if [[ "$BACKEND" == "hygon" ]]; then
+    run_capture "$LOG_DIR/hygon-tests.log" "$PYTHON_BIN" -m pytest -q \
+        tests/accuracy/test_hygon.py tests/accuracy/test_hygon_delivery.py \
+        tests/accuracy/test_api.py tests/accuracy/test_backend.py tests/accuracy/test_backend_registry.py
+fi
+
 case "$BACKEND" in
+    hygon)
+        RESULTS_DIR="$PROJECT_DIR/hygon_results/ci_$RUN_ID"
+        ;;
     nvidia)
         RESULTS_DIR="$PROJECT_DIR/nvidia_results/ci_$RUN_ID"
         ;;

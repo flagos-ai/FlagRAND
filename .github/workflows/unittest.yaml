@@ -8,7 +8,7 @@ on:
         required: true
         default: all
         type: choice
-        options: [all, nvidia, iluvatar, thead, ascend-cann900]
+        options: [all, nvidia, iluvatar, thead, ascend-cann900, hygon]
       profile:
         description: Performance profile
         required: true

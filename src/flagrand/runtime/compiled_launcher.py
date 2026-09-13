@@ -61,7 +61,7 @@ class CachedKernelLauncher:
         specialization_key: object | None = None,
     ) -> Any:
         grid3 = _normalize_grid(grid)
-        if knobs is None and getattr(self._kernel, "binder", None) is not None:
+        if supports_cached_binary_launch() and knobs is None and getattr(self._kernel, "binder", None) is not None:
             return self._launch_legacy(
                 grid3,
                 args,

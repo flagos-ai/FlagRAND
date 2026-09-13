@@ -93,9 +93,12 @@ class DeviceDetector:
             "npu": "ascend",
             "maca": "metax",
             "ppu": "thead",
+            "hcu": "hygon",
         }
         if backend_name in target_vendors:
             return target_vendors[backend_name]
+        if backend_name == "hip" and str(getattr(target, "arch", "")) == "gfx936":
+            return "hygon"
         if backend_name == "cuda":
             try:
                 if "corex" in version("triton").lower():

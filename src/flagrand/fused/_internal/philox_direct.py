@@ -45,7 +45,7 @@ def _philox_uniform_f32_kernel(out_ptr, seed, base_counter, n_counters, BLOCK: t
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offs < n_counters
 
-    r0, r1, r2, r3 = _philox_generate(seed, base_counter + offs)
+    r0, r1, r2, r3 = _philox_generate(seed, tl.cast(base_counter, tl.uint64) + offs.to(tl.uint64))
     u0 = uint32_to_uniform(r0)
     u1 = uint32_to_uniform(r1)
     u2 = uint32_to_uniform(r2)
@@ -72,7 +72,7 @@ def _philox_uniform_f32_generic_kernel(
     group = pid * BLOCK + tl.arange(0, BLOCK)
     group_mask = group < n_groups
 
-    r0, r1, r2, r3 = _philox_window4(seed, base_counter + group, SHIFT)
+    r0, r1, r2, r3 = _philox_window4(seed, tl.cast(base_counter, tl.uint64) + group.to(tl.uint64), SHIFT)
     u0 = uint32_to_uniform(r0)
     u1 = uint32_to_uniform(r1)
     u2 = uint32_to_uniform(r2)
@@ -102,7 +102,7 @@ def _philox_normal_f32_kernel(
     mask = offs < n_counters
     base = offs * 4
 
-    r0, r1, r2, r3 = _philox_generate(seed, base_counter + offs)
+    r0, r1, r2, r3 = _philox_generate(seed, tl.cast(base_counter, tl.uint64) + offs.to(tl.uint64))
     u0 = uint32_to_uniform(r0)
     u1 = uint32_to_uniform(r1)
     u2 = uint32_to_uniform(r2)
@@ -143,7 +143,7 @@ def _philox_normal_f32_generic_kernel(
     group = pid * BLOCK + tl.arange(0, BLOCK)
     group_mask = group < n_groups
 
-    r0, r1, r2, r3 = _philox_window4(seed, base_counter + group, SHIFT)
+    r0, r1, r2, r3 = _philox_window4(seed, tl.cast(base_counter, tl.uint64) + group.to(tl.uint64), SHIFT)
     u0 = uint32_to_uniform(r0)
     u1 = uint32_to_uniform(r1)
     u2 = uint32_to_uniform(r2)
@@ -184,7 +184,7 @@ def _philox_lognormal_f32_kernel(
     mask = offs < n_counters
     base = offs * 4
 
-    r0, r1, r2, r3 = _philox_generate(seed, base_counter + offs)
+    r0, r1, r2, r3 = _philox_generate(seed, tl.cast(base_counter, tl.uint64) + offs.to(tl.uint64))
     u0 = uint32_to_uniform(r0)
     u1 = uint32_to_uniform(r1)
     u2 = uint32_to_uniform(r2)
@@ -225,7 +225,7 @@ def _philox_lognormal_f32_generic_kernel(
     group = pid * BLOCK + tl.arange(0, BLOCK)
     group_mask = group < n_groups
 
-    r0, r1, r2, r3 = _philox_window4(seed, base_counter + group, SHIFT)
+    r0, r1, r2, r3 = _philox_window4(seed, tl.cast(base_counter, tl.uint64) + group.to(tl.uint64), SHIFT)
     u0 = uint32_to_uniform(r0)
     u1 = uint32_to_uniform(r1)
     u2 = uint32_to_uniform(r2)
@@ -271,7 +271,7 @@ if HAS_LIBTUNER:
         offs = pid * BLOCK + tl.arange(0, BLOCK)
         mask = offs < n_counters
 
-        r0, r1, r2, r3 = _philox_generate(seed, base_counter + offs)
+        r0, r1, r2, r3 = _philox_generate(seed, tl.cast(base_counter, tl.uint64) + offs.to(tl.uint64))
         u0 = uint32_to_uniform(r0)
         u1 = uint32_to_uniform(r1)
         u2 = uint32_to_uniform(r2)
@@ -308,7 +308,7 @@ if HAS_LIBTUNER:
         mask = offs < n_counters
         base = offs * 4
 
-        r0, r1, r2, r3 = _philox_generate(seed, base_counter + offs)
+        r0, r1, r2, r3 = _philox_generate(seed, tl.cast(base_counter, tl.uint64) + offs.to(tl.uint64))
         u0 = uint32_to_uniform(r0)
         u1 = uint32_to_uniform(r1)
         u2 = uint32_to_uniform(r2)

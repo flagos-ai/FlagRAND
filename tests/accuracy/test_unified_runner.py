@@ -21,6 +21,7 @@ from tools.run_tests import (
 def test_acceptance_profile_is_translated_for_each_backend(tmp_path) -> None:
     cases = {
         "nvidia": ("matrix", set()),
+        "hygon": ("matrix", set()),
         "metax": (
             "full",
             {

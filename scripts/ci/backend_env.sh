@@ -4,6 +4,12 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BACKEND="$1"
 
 case "$BACKEND" in
+    hygon)
+        export DTK_HOME="${DTK_HOME:-/opt/dtk}"
+        export PATH="$DTK_HOME/bin:$PATH"
+        export LD_LIBRARY_PATH="$DTK_HOME/lib:${LD_LIBRARY_PATH:-}"
+        export FLAGRAND_VENDOR=hygon
+        ;;
     nvidia)
         export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
         export PATH="$CUDA_HOME/bin:$PATH"
