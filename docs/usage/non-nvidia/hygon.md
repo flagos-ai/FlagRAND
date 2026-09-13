@@ -233,3 +233,5 @@ finite host profiles and configuration experiments. Use the normal delivery
 script with `FLAGRAND_PERF_PROFILE=acceptance` for formal measurements.
 This run ID is `4abbd70eb84941879227f0c0c428e351` on physical GPU 2 of the
 validated node. The original baseline data above remains a historical snapshot.
+
+Chinese delivery documents: [Hygon_BW1000_FlagRAND_性能正确性与实现说明](./Hygon_BW1000_FlagRAND_性能正确性与实现说明.md) and [Hygon_BW1000_FlagRAND_正确性验证策略](./Hygon_BW1000_FlagRAND_正确性验证策略.md).
