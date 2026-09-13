@@ -177,3 +177,59 @@ Validated runtime source SHA256:
 `b7228d5dc516a5b7c0b99be4b64f8e51e7f885a7373ada8a91fbe28241122917`.
 Validated benchmark/tools SHA256:
 `88586089d25379e4b6cde7fb12976a0e3ffa3b8e36378de31f09e7a384940226`.
+
+
+## Baseline optimization, 2026-09-14
+
+The follow-up complete matrix meets the same per-API arithmetic-mean target
+(`>= 0.95x`) documented for MetaX C550 and Ascend. On BW1000 / gfx936,
+DTK 26.04, Torch 2.10.0 and Triton 3.6.0, all 300 API/shape pairs and
+600 implementation/baseline records passed. All 14 CI phases passed;
+independent prerequisite suites passed 27 Hygon/API tests and 14 runner tests.
+
+| API | 原始交付 | 优化后 | ≥0.95× |
+|---|---:|---:|---|
+| raw32 | 0.860× | 1.072× | 达标 |
+| uniform_f32 | 0.805× | 1.517× | 达标 |
+| uniform_f64 | 0.601× | 1.290× | 达标 |
+| normal_f32 | 0.722× | 1.138× | 达标 |
+| normal_f64 | 0.540× | 1.008× | 达标 |
+| lognormal_f32 | 0.633× | 0.984× | 达标 |
+| lognormal_f64 | 0.545× | 1.001× | 达标 |
+
+The ratio is native hipRAND / FlagRAND synchronized host API time; larger
+means faster. These are API means, not a guarantee for every input.
+For example, raw32 at N=1,048,575 is 0.471x, normal_f64 has a 0.623x slow
+point, and normal_f32 at 16M is 0.857x. In normal_f32, 36 of 42 shapes remain
+below 1.0x despite its 1.138x API mean. Retain the per-shape records.
+
+Implementation follows NVIDIA's direct public API dispatch structure while
+preserving Hygon's portable Philox stream and two uint32 words per FP64 output.
+FP64 launch keys now distinguish device, pointer alignment, seed, counter
+specialization class, size, SHIFT, parameters and block configuration. Every
+call resolves the current stream. Standard normal inputs omit affine work;
+nonstandard binary64 mean/stddev retain exact bit transport.
+
+The selected defaults are BLOCK=256/warps=4 for raw/uniform, 128/2 for FP32
+normal/lognormal, and 256/4 for FP64 normal/lognormal. Explicit launch options
+remain available. A repeated portability check on modern Triton was removed
+by checking the legacy-version condition first; dynamic portable mode and
+profiling hooks still take their existing paths.
+
+The old FP64 128/4 configuration generated a layout conversion and 2048 bytes
+of launch-time LDS: `ds_write2st64_b64`, `s_barrier`, `ds_read_b64`, then an
+8-byte output store. The 256/4 configuration uses no LDS or conversion and a
+16-byte output store. For normal_f64, graph timing fell from 43.32 to 21.47 us
+at 1M and 649.89 to 305.17 us at 16M. VGPR usage was 32 versus 31 with no
+spills. Assembly fixed-LDS declarations alone miss the dynamic launch allocation.
+
+A separate FP32 crossover remains unexplained: 128/2 versus 256/4 at 1M is
+12.25 versus 55.18 us, despite identical VGPR count and store opcode; at 16M
+it is 152.38 versus 148.79 us. This supports configuration selection, but is
+not sufficient evidence to claim a specific cache-conflict mechanism.
+
+`python benchmark/run_hygon_tuning.py --output hygon_results/tuning` runs the
+finite host profiles and configuration experiments. Use the normal delivery
+script with `FLAGRAND_PERF_PROFILE=acceptance` for formal measurements.
+This run ID is `4abbd70eb84941879227f0c0c428e351` on physical GPU 2 of the
+validated node. The original baseline data above remains a historical snapshot.

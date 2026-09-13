@@ -38,6 +38,7 @@ def test_public_curand_uses_selected_vendor_override() -> None:
         "flagrand.runtime.backend._hygon.ops" if device.vendor_name == "hygon" else expected_module
     )
     public_module = {
+        "hygon": "flagrand.runtime.backend._hygon.ops",
         "nvidia": "flagrand.runtime.backend._nvidia.ops",
         "metax": "flagrand.runtime.backend._metax.ops",
         "ascend": "flagrand.runtime.backend._ascend.ops",
