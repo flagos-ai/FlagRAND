@@ -30,7 +30,7 @@ def _philox_generate(seed, counter):
 @triton.jit
 def _counter_at(base_counter, index):
     # Promote before addition: a tile can cross the signed/unsigned 32-bit boundary.
-    return base_counter.to(tl.uint64) + index.to(tl.uint64)
+    return tl.cast(base_counter, tl.uint64) + tl.cast(index, tl.uint64)
 
 
 @triton.jit
