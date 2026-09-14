@@ -32,6 +32,8 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--apis', default='raw32,normal_f32')
+    parser.add_argument('--skip-profiles', action='store_true')
     args = parser.parse_args(); args.output.mkdir(parents=True, exist_ok=True)
     state = get_backend_state(); original = state.vendor_info
     profile = Profile('diagnostic', (), 5, 5, 20.0)
@@ -45,7 +47,8 @@ def main():
 
     def invoke(api, gen, out, block=512, warps=4):
         operation = curand.generate if api == 'raw32' else curand.generate_normal
-        return operation(gen, out, block_size=block, num_warps=warps)
+        parameters = {} if api == 'raw32' else {'mean': 0.0, 'stddev': 1.0}
+        return operation(gen, out, block_size=block, num_warps=warps, **parameters)
 
     def reference(api, offset, n):
         raw = words(0x1234567887654321, offset // 4 * 4, ((offset % 4 + n + 3) // 4) * 4)
@@ -61,10 +64,10 @@ def main():
     save()
     for mode in ('regular', 'cached'):
         state.vendor_info = replace(original, cached_binary_launch=mode == 'cached')
-        for api in ('raw32', 'normal_f32'):
+        for api in args.apis.split(','):
             dtype = torch.int32 if api == 'raw32' else torch.float32
-            for offset in (0, 4, 2**33-4, 2**34-4):
-                n = 1025 if api == 'raw32' else 1026
+            for offset, n in ((offset,n) for offset in (0,4,2**33-4,2**34-4)
+                              for n in ((1025,) if api=='raw32' else (1024,1026))):
                 row = dict(mode=mode, api=api, offset=offset, n=n)
                 try:
                     out = torch.empty(n, device='cuda', dtype=dtype)
@@ -78,21 +81,23 @@ def main():
                 except Exception:
                     row.update(status='error', traceback=traceback.format_exc())
                 report['correctness'].append(row); save()
-            out = torch.empty(4096,device='cuda',dtype=dtype)
-            gen = make_flagrand_generator(1234)
-            for _ in range(16):invoke_flagrand(api,gen,out)
-            torch.cuda.synchronize()
-            prof = cProfile.Profile(); prof.enable()
-            for _ in range(1000):invoke_flagrand(api,gen,out)
-            torch.cuda.synchronize();prof.disable()
-            stem = args.output / f'{mode}-{api}-cpu'
-            prof.dump_stats(str(stem.with_suffix('.prof')))
-            text = io.StringIO();pstats.Stats(prof,stream=text).sort_stats('cumtime').print_stats(35)
-            stem.with_suffix('.txt').write_text(text.getvalue())
-            report['profiles'][f'{mode}-{api}'] = text.getvalue();save()
+            if not args.skip_profiles:
+                out = torch.empty(4096,device='cuda',dtype=dtype)
+                gen = make_flagrand_generator(1234)
+                for _ in range(16):invoke_flagrand(api,gen,out)
+                torch.cuda.synchronize()
+                prof = cProfile.Profile(); prof.enable()
+                for _ in range(1000):invoke_flagrand(api,gen,out)
+                torch.cuda.synchronize();prof.disable()
+                stem = args.output / f'{mode}-{api}-cpu'
+                prof.dump_stats(str(stem.with_suffix('.prof')))
+                text = io.StringIO();pstats.Stats(prof,stream=text).sort_stats('cumtime').print_stats(35)
+                stem.with_suffix('.txt').write_text(text.getvalue())
+                report['profiles'][f'{mode}-{api}'] = text.getvalue();save()
             configs = ((512,4),) if mode=='regular' else ((512,4),(256,4),(128,2))
             for n in (4096,1048576,16777216):
                 for block,warps in configs:
+                    state.vendor_info=replace(original,cached_binary_launch=mode=='cached')
                     row = dict(mode=mode,api=api,n=n,block=block,warps=warps)
                     try:
                         out=torch.empty(n,device='cuda',dtype=dtype)
@@ -124,7 +129,8 @@ def main():
                 stem=args.output/compiled.hash
                 for kind,content in compiled.asm.items():
                     if isinstance(content,str):stem.with_suffix('.'+kind).write_text(content)
-                report['compiler'].append(dict(name=compiled.name,hash=compiled.hash,metadata=compiled.metadata._asdict(),
+                metadata = dict(compiled.metadata._asdict(), target=str(compiled.metadata.target))
+                report['compiler'].append(dict(name=compiled.name,hash=compiled.hash,metadata=metadata,
                     n_regs=getattr(compiled,'n_regs',None),n_spills=getattr(compiled,'n_spills',None),formats=list(compiled.asm)))
     state.vendor_info=original
     # Target metadata is a namedtuple and serializes as a tuple via json.
