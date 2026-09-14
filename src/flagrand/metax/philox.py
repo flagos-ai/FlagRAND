@@ -54,7 +54,7 @@ def _raw_kernel(out, seed, base_counter, n_counters, BLOCK: tl.constexpr):
     tl.store(out + offsets, tile.to(tl.int32, bitcast=True), mask=mask[:, None])
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["base_counter"])
 def _raw_generic_kernel(
     out,
     seed,
@@ -91,7 +91,7 @@ def _uniform_f32_kernel(out, seed, base_counter, n_counters, BLOCK: tl.constexpr
     tl.store(out + offsets, tile, mask=mask[:, None])
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["base_counter"])
 def _uniform_f32_generic_kernel(
     out,
     seed,

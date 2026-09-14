@@ -21,6 +21,18 @@ pytestmark = [
 
 
 @pytest.mark.raw32
+@pytest.mark.parametrize("offset", [0, 4, 60, 64, 1025, 2**33-4, 2**33, 2**34+1])
+def test_metax_generic_counter_carries_match_cpu_philox(offset: int) -> None:
+    from benchmark.hygon_matrix.reference import words
+
+    seed=0x1234567887654321
+    actual=torch.empty(1025,device="cuda",dtype=torch.int32)
+    curand.generate(curand.create_generator(seed=seed,offset=offset),actual)
+    expected=torch.from_numpy(words(seed,offset,actual.numel()).view("int32").copy())
+    assert torch.equal(actual.cpu(),expected)
+
+
+@pytest.mark.raw32
 def test_metax_backend_is_active() -> None:
     assert current_vendor() == "metax"
     assert current_backend() == "maca"

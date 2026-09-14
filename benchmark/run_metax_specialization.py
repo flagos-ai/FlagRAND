@@ -41,11 +41,10 @@ def main():
     from flagrand.metax import philox
     from flagrand.metax.launcher import MetaXKernelLauncher
 
-    if args.strategy=='counter_dynamic':
-        for name in ('_RAW_GENERIC_LAUNCHER','_UNIFORM_F32_GENERIC_LAUNCHER'):
-            old=getattr(philox,name)
-            kernel=triton.jit(old._kernel.fn,do_not_specialize=['base_counter'])
-            setattr(philox,name,MetaXKernelLauncher(kernel,constexpr_names=old._constexpr_names))
+    for name in ('_RAW_GENERIC_LAUNCHER','_UNIFORM_F32_GENERIC_LAUNCHER'):
+        old=getattr(philox,name)
+        kernel=triton.jit(old._kernel.fn,do_not_specialize=['base_counter'] if args.strategy=='counter_dynamic' else [])
+        setattr(philox,name,MetaXKernelLauncher(kernel,constexpr_names=old._constexpr_names))
 
     report={'environment':collect_environment(),'strategy':args.strategy,'cases':[],
             'scope':'Two APIs, three sizes, default block512/warps4. Fresh disk cache per strategy. '
