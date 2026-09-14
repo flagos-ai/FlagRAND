@@ -258,7 +258,10 @@ def _render_acceptance_summary(summary: dict[str, Any]) -> list[str]:
         f"- Baseline: `{summary['baseline']}`",
         f"- Per-API mean speedup target: `{format_acceptance_target(summary['min_speedup'], summary['max_speedup'])}`",
         "- Cross-API average: `not reported`",
-        (f"- Status: `{summary['status']}` " f"(`{summary['pass_count']}`/`{summary['api_count']}` APIs meeting target)"),
+        (
+            f"- Status: `{summary['status']}` "
+            f"(`{summary['pass_count']}`/`{summary['api_count']}` APIs meeting target)"
+        ),
         "",
         "| API | Shapes | Shape speedups | API speedup | Status |",
         "|---|---:|---:|---:|---:|",

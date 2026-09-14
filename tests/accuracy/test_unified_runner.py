@@ -15,8 +15,8 @@ from tools.run_tests import (
     normalise_performance,
     parse_accuracy_data,
     parse_performance_data,
-    run_performance,
     run_accuracy,
+    run_performance,
     supported_operator_ids,
     worker_env,
 )
@@ -25,10 +25,11 @@ from tools.run_tests import (
 def test_accuracy_retains_completed_case_when_next_case_aborts(tmp_path, monkeypatch) -> None:
     import tools.run_tests as runner
 
-    plugin = Path(__file__).resolve().parents[1] / 'conftest.py'
-    (tmp_path / 'conftest.py').write_text(plugin.read_text())
-    test_file = tmp_path / 'test_abrupt.py'
-    test_file.write_text('''import os
+    plugin = Path(__file__).resolve().parents[1] / "conftest.py"
+    (tmp_path / "conftest.py").write_text(plugin.read_text())
+    test_file = tmp_path / "test_abrupt.py"
+    test_file.write_text(
+        """import os
 import pytest
 @pytest.mark.raw32
 def test_00_pass():
@@ -36,19 +37,21 @@ def test_00_pass():
 @pytest.mark.raw32
 def test_01_abort():
     os._exit(86)
-''')
-    monkeypatch.setattr(runner, 'ROOT', tmp_path)
-    monkeypatch.setattr(runner, '_accuracy_test_paths', lambda *_: [test_file])
-    monkeypatch.setenv('PYTEST_DISABLE_PLUGIN_AUTOLOAD', '1')
-    config = RunnerConfig(output_dir=tmp_path/'results', platform='iluvatar', profile='acceptance',
-                          dump_output=True, timeout=30)
-    result = run_accuracy(0, {'id':'raw32'}, config)
-    assert result['status'] == 'Error'
-    assert result['exit_code'] == 86
-    assert result['passed'] == 1
-    assert result['total'] == 1
-    records = json.loads((config.output_dir/result['data_file']).read_text())
-    assert next(iter(records.values()))['result'] == 'passed'
+"""
+    )
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    monkeypatch.setattr(runner, "_accuracy_test_paths", lambda *_: [test_file])
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    config = RunnerConfig(
+        output_dir=tmp_path / "results", platform="iluvatar", profile="acceptance", dump_output=True, timeout=30
+    )
+    result = run_accuracy(0, {"id": "raw32"}, config)
+    assert result["status"] == "Error"
+    assert result["exit_code"] == 86
+    assert result["passed"] == 1
+    assert result["total"] == 1
+    records = json.loads((config.output_dir / result["data_file"]).read_text())
+    assert next(iter(records.values()))["result"] == "passed"
 
 
 def test_acceptance_profile_is_translated_for_each_backend(tmp_path) -> None:
@@ -140,11 +143,22 @@ def test_ascend_child_keeps_the_agents_runtime_mask(monkeypatch) -> None:
 
 def test_managed_phase_remains_in_the_node_workers_process_group(tmp_path) -> None:
     from tools.run_tests import run_cmd
+
     result = tmp_path / "pgrp.txt"
     config = RunnerConfig(tmp_path, "iluvatar", "smoke", False, 10)
     env = dict(os.environ, FLAGRAND_MANAGED_PROCESS_GROUP="1")
-    code = run_cmd("raw32", "performance", [sys.executable, "-c",
-        "import os,pathlib,sys; pathlib.Path(sys.argv[1]).write_text(str(os.getpgrp()))", str(result)], env=env, config=config)
+    code = run_cmd(
+        "raw32",
+        "performance",
+        [
+            sys.executable,
+            "-c",
+            "import os,pathlib,sys; pathlib.Path(sys.argv[1]).write_text(str(os.getpgrp()))",
+            str(result),
+        ],
+        env=env,
+        config=config,
+    )
     assert code == 0
     assert int(result.read_text()) == os.getpgrp()
 

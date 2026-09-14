@@ -285,8 +285,14 @@ def run_cmd(
         handles = [stdout, stderr]
         stderr.write(f"[CMD] {' '.join(command)}\n[CWD] {ROOT}\n\n")
         stderr.flush()
-    process = subprocess.Popen(command, cwd=ROOT, env=env, stdout=stdout, stderr=stderr,
-                               start_new_session=env.get("FLAGRAND_MANAGED_PROCESS_GROUP") != "1")
+    process = subprocess.Popen(
+        command,
+        cwd=ROOT,
+        env=env,
+        stdout=stdout,
+        stderr=stderr,
+        start_new_session=env.get("FLAGRAND_MANAGED_PROCESS_GROUP") != "1",
+    )
     try:
         process.wait(timeout=config.timeout)
         return process.returncode
@@ -401,8 +407,8 @@ def run_accuracy(gpu_id: int, operator: dict[str, Any], config: RunnerConfig) ->
     if code != 0:
         # Completed cases remain useful even when LLVM aborts the following case.
         # A partial list of passes cannot make the accuracy phase pass.
-        result['status'] = 'Timeout' if code == TIMEOUT else 'Failed' if code == 1 else 'Error'
-        result['details']['process_exit'] = {'exit_code': code}
+        result["status"] = "Timeout" if code == TIMEOUT else "Failed" if code == 1 else "Error"
+        result["details"]["process_exit"] = {"exit_code": code}
     result.update(
         {
             "exit_code": code,
@@ -697,9 +703,18 @@ def main(argv: list[str] | None = None) -> int:
     selected_platform = detect_platform()
     if os.environ.get("FLAGRAND_MANAGED_PROCESS_GROUP") == "1":
         # Release the probe's context before a benchmark starts; the supervisor is CPU-only.
-        env_info = json.loads(subprocess.check_output(
-            [sys.executable, "-c", "import json,sys; from tools.run_tests import probe_env; print(json.dumps(probe_env(sys.argv[1])))", selected_platform],
-            cwd=ROOT, text=True))
+        env_info = json.loads(
+            subprocess.check_output(
+                [
+                    sys.executable,
+                    "-c",
+                    "import json,sys; from tools.run_tests import probe_env; print(json.dumps(probe_env(sys.argv[1])))",
+                    selected_platform,
+                ],
+                cwd=ROOT,
+                text=True,
+            )
+        )
     else:
         env_info = probe_env(selected_platform)
     catalog = get_ops_from_inventory()

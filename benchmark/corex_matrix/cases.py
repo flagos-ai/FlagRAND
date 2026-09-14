@@ -72,7 +72,11 @@ def run_flagrand_case(distribution: str, n: int, seed: int, profile: Profile) ->
 def run_corex_curand_case(distribution: str, n: int, seed: int, profile: Profile, capabilities=None) -> dict[str, Any]:
     record = _base_record("corex_curand", distribution, n)
     record["seed"] = seed
-    unsupported = capabilities[distribution]['status']=='unsupported' if capabilities and distribution in capabilities else distribution not in COREX_CURAND_DISTRIBUTIONS
+    unsupported = (
+        capabilities[distribution]["status"] == "unsupported"
+        if capabilities and distribution in capabilities
+        else distribution not in COREX_CURAND_DISTRIBUTIONS
+    )
     if unsupported:
         record.update(
             status="unsupported",

@@ -56,12 +56,14 @@ def main() -> int:
         },
     }
     manifest["preflight"] = warm_flagrand_compilation_paths(args.seed)
-    manifest['native_fp64_probe'] = probe_native_fp64(args.seed)
+    manifest["native_fp64_probe"] = probe_native_fp64(args.seed)
 
     for distribution in args.distributions:
         for n in args.shape_map[distribution]:
             flagrand_record = run_flagrand_case(distribution, n, args.seed, args.profile_config)
-            baseline_record = run_corex_curand_case(distribution, n, args.seed, args.profile_config, manifest['native_fp64_probe'])
+            baseline_record = run_corex_curand_case(
+                distribution, n, args.seed, args.profile_config, manifest["native_fp64_probe"]
+            )
             annotate_speedup(flagrand_record, baseline_record)
             records.extend((flagrand_record, baseline_record))
             print_record(flagrand_record)
