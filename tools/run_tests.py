@@ -250,8 +250,10 @@ def worker_env(platform: str, gpu_id: int) -> dict[str, str]:
         env["HIP_VISIBLE_DEVICES"] = selected
         env["CUDA_VISIBLE_DEVICES"] = selected
     elif platform == "iluvatar":
-        env["ILUVATAR_VISIBLE_DEVICES"] = device
-        env["CUDA_VISIBLE_DEVICES"] = device
+        visible = env.get("CUDA_VISIBLE_DEVICES", env.get("ILUVATAR_VISIBLE_DEVICES"))
+        selected = visible.split(",")[gpu_id] if visible else device
+        env["ILUVATAR_VISIBLE_DEVICES"] = selected
+        env["CUDA_VISIBLE_DEVICES"] = selected
     else:
         env["CUDA_VISIBLE_DEVICES"] = device
     python_paths = [str(ROOT / "src"), str(ROOT)]
@@ -280,7 +282,8 @@ def run_cmd(
         handles = [stdout, stderr]
         stderr.write(f"[CMD] {' '.join(command)}\n[CWD] {ROOT}\n\n")
         stderr.flush()
-    process = subprocess.Popen(command, cwd=ROOT, env=env, stdout=stdout, stderr=stderr, start_new_session=True)
+    process = subprocess.Popen(command, cwd=ROOT, env=env, stdout=stdout, stderr=stderr,
+                               start_new_session=env.get("FLAGRAND_MANAGED_PROCESS_GROUP") != "1")
     try:
         process.wait(timeout=config.timeout)
         return process.returncode
@@ -693,7 +696,13 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     started_at = dt.datetime.now()
     selected_platform = detect_platform()
-    env_info = probe_env(selected_platform)
+    if os.environ.get("FLAGRAND_MANAGED_PROCESS_GROUP") == "1":
+        # Release the probe's context before a benchmark starts; the supervisor is CPU-only.
+        env_info = json.loads(subprocess.check_output(
+            [sys.executable, "-c", "import json,sys; from tools.run_tests import probe_env; print(json.dumps(probe_env(sys.argv[1])))", selected_platform],
+            cwd=ROOT, text=True))
+    else:
+        env_info = probe_env(selected_platform)
     catalog = get_ops_from_inventory()
     operators = get_ops_to_test(
         catalog,

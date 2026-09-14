@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 
 from tools.run_tests import (
     PLATFORM_ALIASES,
@@ -79,6 +81,25 @@ def test_nvidia_accuracy_combines_shared_cuda_and_native_curand_tests() -> None:
     paths = [path.name for path in _accuracy_test_paths(operator, "nvidia")]
 
     assert paths == ["test_philox_cuda.py", "test_philox_nvidia.py"]
+
+
+def test_iluvatar_child_keeps_the_agents_physical_device_mask(monkeypatch) -> None:
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1,3")
+    monkeypatch.setenv("ILUVATAR_VISIBLE_DEVICES", "0")
+    for logical, physical in [(0, "1"), (1, "3")]:
+        env = worker_env("iluvatar", logical)
+        assert env["CUDA_VISIBLE_DEVICES"] == env["ILUVATAR_VISIBLE_DEVICES"] == physical
+
+
+def test_managed_phase_remains_in_the_node_workers_process_group(tmp_path) -> None:
+    from tools.run_tests import run_cmd
+    result = tmp_path / "pgrp.txt"
+    config = RunnerConfig(tmp_path, "iluvatar", "smoke", False, 10)
+    env = dict(os.environ, FLAGRAND_MANAGED_PROCESS_GROUP="1")
+    code = run_cmd("raw32", "performance", [sys.executable, "-c",
+        "import os,pathlib,sys; pathlib.Path(sys.argv[1]).write_text(str(os.getpgrp()))", str(result)], env=env, config=config)
+    assert code == 0
+    assert int(result.read_text()) == os.getpgrp()
 
 
 def test_metax_accuracy_combines_shared_cuda_and_platform_dispatch_tests() -> None:
