@@ -58,8 +58,8 @@ def value_tokens(values: tuple[object, ...]) -> tuple[tuple[object, ...], ...]:
     )
 
 
-def integer_specialization_key(value: int) -> tuple[object, ...]:
-    return (_integer_signature(value), value == 1, value % 16 == 0)
+def integer_specialization_key(value: int, alignment: int = 16) -> tuple[object, ...]:
+    return (_integer_signature(value), value == 1, value % alignment == 0)
 
 
 def _integer_signature(value: int) -> str:

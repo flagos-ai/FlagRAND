@@ -351,6 +351,8 @@ def _accuracy_test_paths(operator: dict[str, Any], platform: str) -> list[Path]:
         paths.extend(ROOT / str(path) for path in operator["platform_accuracy_tests"] if "nvidia" in str(path))
     elif platform == "metax":
         paths.extend(ROOT / str(path) for path in operator["platform_accuracy_tests"] if "metax" in str(path))
+    elif platform == "iluvatar":
+        paths.append(ROOT / "tests/accuracy/test_philox_iluvatar.py")
     return paths
 
 

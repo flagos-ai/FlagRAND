@@ -10,7 +10,7 @@ vendor_info = VendorDescriptor(
     trademark="Iluvatar CoreX",
     fp64_enabled=True,
     backend_name="corex",
-    cached_binary_launch=False,
+    cached_binary_launch=True,
     portable_f32_math=True,
 )
 

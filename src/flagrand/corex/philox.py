@@ -9,6 +9,12 @@ from flagrand.runtime import CachedKernelLauncher
 
 
 @triton.jit
+def _counter_at(base, index):
+    # Widen before adding: an i32 base near 2**31 must carry into the high word.
+    return tl.cast(base, tl.uint64) + tl.cast(index, tl.uint64)
+
+
+@triton.jit
 def _philox_generate(seed, counter):
     c0 = tl.zeros_like(counter).to(tl.uint32)
     c1 = tl.zeros_like(counter).to(tl.uint32)
@@ -105,7 +111,7 @@ def _box_muller_f32(raw0, raw1):
 def _uniform_aligned_kernel(out, seed, base_counter, n_counters, BLOCK: tl.constexpr):
     counter_offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = counter_offset < n_counters
-    w0, w1, w2, w3 = _logical_words(seed, base_counter + counter_offset)
+    w0, w1, w2, w3 = _logical_words(seed, _counter_at(base_counter, counter_offset))
     base = counter_offset * 4
     tl.store(out + base + 0, _uniform_f32(w0), mask=mask)
     tl.store(out + base + 1, _uniform_f32(w1), mask=mask)
@@ -117,7 +123,7 @@ def _uniform_aligned_kernel(out, seed, base_counter, n_counters, BLOCK: tl.const
 def _uniform_generic_kernel(out, seed, offset, n, BLOCK: tl.constexpr):
     index = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = index < n
-    word_index = offset + index
+    word_index = _counter_at(offset, index)
     counter = word_index >> 2
     lane = word_index & 3
     w0, w1, w2, w3 = _logical_words(seed, counter)
@@ -129,7 +135,7 @@ def _uniform_generic_kernel(out, seed, offset, n, BLOCK: tl.constexpr):
 def _uniform_f64_aligned_kernel(out, seed, base_counter, n_counters, BLOCK: tl.constexpr):
     counter_offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = counter_offset < n_counters
-    w0, w1, w2, w3 = _logical_words(seed, base_counter + counter_offset)
+    w0, w1, w2, w3 = _logical_words(seed, _counter_at(base_counter, counter_offset))
     base = counter_offset * 2
     tl.store(out + base + 0, _uniform_f64(w0, w1), mask=mask)
     tl.store(out + base + 1, _uniform_f64(w2, w3), mask=mask)
@@ -147,7 +153,7 @@ def _uniform_f64_generic_kernel(
 ):
     group = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = group < n_groups
-    w0, w1, w2, w3 = _logical_window4(seed, base_counter + group, SHIFT)
+    w0, w1, w2, w3 = _logical_window4(seed, _counter_at(base_counter, group), SHIFT)
     base = group * 2
     tl.store(out + base + 0, _uniform_f64(w0, w1), mask=mask & (base + 0 < n))
     tl.store(out + base + 1, _uniform_f64(w2, w3), mask=mask & (base + 1 < n))
@@ -166,7 +172,7 @@ def _normal_aligned_kernel(
 ):
     counter_offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = counter_offset < n_counters
-    w0, w1, w2, w3 = _logical_words(seed, base_counter + counter_offset)
+    w0, w1, w2, w3 = _logical_words(seed, _counter_at(base_counter, counter_offset))
     z0, z1 = _box_muller_f32(w0, w1)
     z2, z3 = _box_muller_f32(w2, w3)
     y0 = mean + stddev * z0
@@ -198,7 +204,7 @@ def _normal_pair_kernel(
 ):
     pair = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = pair < n_pairs
-    word_index = offset + pair * 2
+    word_index = _counter_at(offset, pair * 2)
     counter = word_index >> 2
     lane = word_index & 3
     w0, w1, w2, w3 = _logical_words(seed, counter)
@@ -282,6 +288,7 @@ def generate_corex_raw_u32(
         generator,
         block_size=block_size,
         num_warps=num_warps,
+        scalar_alignment=4,
     )
 
 

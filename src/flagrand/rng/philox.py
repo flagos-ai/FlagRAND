@@ -162,6 +162,7 @@ def generate_philox_raw_u32(
     block_size: int = 512,
     num_warps: int = 4,
     use_libtuner_kernel: bool = False,
+    scalar_alignment: int = 16,
 ) -> torch.Tensor:
     n = out.numel()
     if not out.is_contiguous():
@@ -184,6 +185,7 @@ def generate_philox_raw_u32(
         block_size,
         num_warps,
         use_libtuner_kernel,
+        scalar_alignment,
     )
     if seed is None and offset is None:
         generator.offset = offset_val + n
@@ -198,6 +200,7 @@ def _launch_philox_raw_u32(
     block_size: int,
     num_warps: int,
     use_libtuner_kernel: bool = False,
+    scalar_alignment: int = 16,
 ) -> None:
     if n:
         base_counter = offset_val // 4
@@ -219,7 +222,7 @@ def _launch_philox_raw_u32(
                         out.dtype,
                         out.data_ptr() % 16 == 0,
                         seed_val,
-                        integer_specialization_key(base_counter),
+                        integer_specialization_key(base_counter, scalar_alignment),
                         n_counters,
                         block_size,
                         num_warps,
@@ -242,7 +245,7 @@ def _launch_philox_raw_u32(
                     out.dtype,
                     out.data_ptr() % 16 == 0,
                     seed_val,
-                    integer_specialization_key(base_counter),
+                    integer_specialization_key(base_counter, scalar_alignment),
                     n,
                     n_groups,
                     shift,
