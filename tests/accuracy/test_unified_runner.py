@@ -122,6 +122,22 @@ def test_iluvatar_child_keeps_the_agents_physical_device_mask(monkeypatch) -> No
         assert env["CUDA_VISIBLE_DEVICES"] == env["ILUVATAR_VISIBLE_DEVICES"] == physical
 
 
+def test_cuda_children_keep_allocated_device_or_uuid_masks(monkeypatch) -> None:
+    for platform in ("thead", "metax", "nvidia"):
+        for mask in ("1,3", "GPU-first,GPU-second"):
+            monkeypatch.setenv("CUDA_VISIBLE_DEVICES", mask)
+            for logical, physical in enumerate(mask.split(",")):
+                assert worker_env(platform, logical)["CUDA_VISIBLE_DEVICES"] == physical
+
+
+def test_ascend_child_keeps_the_agents_runtime_mask(monkeypatch) -> None:
+    monkeypatch.setenv("ASCEND_RT_VISIBLE_DEVICES", "2,6")
+    monkeypatch.setenv("NPU_VISIBLE_DEVICES", "0")
+    for logical, physical in [(0, "2"), (1, "6")]:
+        env = worker_env("ascend-cann900", logical)
+        assert env["ASCEND_RT_VISIBLE_DEVICES"] == env["NPU_VISIBLE_DEVICES"] == physical
+
+
 def test_managed_phase_remains_in_the_node_workers_process_group(tmp_path) -> None:
     from tools.run_tests import run_cmd
     result = tmp_path / "pgrp.txt"

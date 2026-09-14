@@ -242,8 +242,10 @@ def worker_env(platform: str, gpu_id: int) -> dict[str, str]:
     env = os.environ.copy()
     device = str(gpu_id)
     if platform == "ascend-cann900":
-        env["ASCEND_RT_VISIBLE_DEVICES"] = device
-        env["NPU_VISIBLE_DEVICES"] = device
+        visible = env.get("ASCEND_RT_VISIBLE_DEVICES", env.get("NPU_VISIBLE_DEVICES"))
+        selected = visible.split(",")[gpu_id] if visible else device
+        env["ASCEND_RT_VISIBLE_DEVICES"] = selected
+        env["NPU_VISIBLE_DEVICES"] = selected
     elif platform == "hygon":
         visible = env.get("HIP_VISIBLE_DEVICES", env.get("CUDA_VISIBLE_DEVICES"))
         selected = visible.split(",")[gpu_id] if visible else device
@@ -255,7 +257,8 @@ def worker_env(platform: str, gpu_id: int) -> dict[str, str]:
         env["ILUVATAR_VISIBLE_DEVICES"] = selected
         env["CUDA_VISIBLE_DEVICES"] = selected
     else:
-        env["CUDA_VISIBLE_DEVICES"] = device
+        visible = env.get("CUDA_VISIBLE_DEVICES")
+        env["CUDA_VISIBLE_DEVICES"] = visible.split(",")[gpu_id] if visible else device
     python_paths = [str(ROOT / "src"), str(ROOT)]
     if env.get("PYTHONPATH"):
         python_paths.append(env["PYTHONPATH"])
