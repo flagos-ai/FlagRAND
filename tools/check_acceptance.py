@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 import importlib
 import json
 import math
-from pathlib import Path
 import sys
+from collections import Counter
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -23,8 +23,12 @@ APIS = {
     "lognormal_f64": ("LOGNORMAL", "fp64"),
 }
 BASELINES = {
-    "hygon": "hygon_hiprand", "nvidia": "nvidia_curand", "iluvatar": "corex_curand",
-    "metax": "mcrand", "thead": "ppu_acrand", "ascend": "cann_aclnn",
+    "hygon": "hygon_hiprand",
+    "nvidia": "nvidia_curand",
+    "iluvatar": "corex_curand",
+    "metax": "mcrand",
+    "thead": "ppu_acrand",
+    "ascend": "cann_aclnn",
 }
 
 
@@ -33,6 +37,7 @@ def shape_map(vendor):
         module = "corex" if vendor == "iluvatar" else vendor
         return importlib.import_module(f"benchmark.{module}_matrix.config").MATRIX_SHAPE_MAP
     from benchmark.muxi_matrix.config import ACCEPTANCE_DISTRIBUTION_SIZES
+
     return ACCEPTANCE_DISTRIBUTION_SIZES
 
 
@@ -54,13 +59,20 @@ def check(summary_path):
     for name, result in summary["result"].items():
         expect(set(result) == {"customized", "accuracy", "performance"}, f"{name}: schema mismatch")
         accuracy = result["accuracy"]
-        expect(accuracy["status"] == "Passed" and accuracy["passed"] > 0 and accuracy["failed"] == 0,
-               f"{name}: accuracy {accuracy['status']}, passed={accuracy['passed']}, failed={accuracy['failed']}")
-        expect(accuracy["total"] == sum(accuracy[key] for key in ("passed", "failed", "skipped")),
-               f"{name}: accuracy counts disagree")
-    expect(summary["result"]["PHILOX4_32_10"] == summary["result"]["RAW_BITS"] | {
-        "performance": summary["result"]["RAW_BITS"]["performance"] | {"test_case": "PHILOX4_32_10"}
-    }, "Philox/raw delivery aliases disagree")
+        expect(
+            accuracy["status"] == "Passed" and accuracy["passed"] > 0 and accuracy["failed"] == 0,
+            f"{name}: accuracy {accuracy['status']}, passed={accuracy['passed']}, failed={accuracy['failed']}",
+        )
+        expect(
+            accuracy["total"] == sum(accuracy[key] for key in ("passed", "failed", "skipped")),
+            f"{name}: accuracy counts disagree",
+        )
+    expect(
+        summary["result"]["PHILOX4_32_10"]
+        == summary["result"]["RAW_BITS"]
+        | {"performance": summary["result"]["RAW_BITS"]["performance"] | {"test_case": "PHILOX4_32_10"}},
+        "Philox/raw delivery aliases disagree",
+    )
     vendor = summary["env"]["flagrand"]["vendor"]
     baseline = BASELINES[vendor]
     shapes = shape_map(vendor)
@@ -89,8 +101,11 @@ def check(summary_path):
         for backend in ("flagrand_public", baseline):
             selected = [r for r in records if r["backend"] == backend and r["distribution"] == api]
             expect(Counter(r["n"] for r in selected) == Counter(expected), f"{api}/{backend}: missing/duplicate shapes")
-            bad = [{"n": r["n"], "status": r["status"], "reason": r.get("reason", r.get("error"))}
-                   for r in selected if r["status"] != "pass"]
+            bad = [
+                {"n": r["n"], "status": r["status"], "reason": r.get("reason", r.get("error"))}
+                for r in selected
+                if r["status"] != "pass"
+            ]
             expect(not bad, f"{api}/{backend}: {bad}")
             sides[backend] = {r["n"]: r for r in selected if r["status"] == "pass"}
         data = summary["result"][operator]["performance"]["data"].get(dtype, {})
@@ -109,25 +124,38 @@ def check(summary_path):
             ratios.append(ratio)
             point = details.get(f"({n},)", {})
             for key, value in (("base", native), ("gems", ours), ("speedup", ratio)):
-                expect(math.isclose(float(point.get(key, math.nan)), value, rel_tol=1e-9, abs_tol=1e-12),
-                       f"{api}/{n}: summary {key} disagrees with native records")
+                expect(
+                    math.isclose(float(point.get(key, math.nan)), value, rel_tol=1e-9, abs_tol=1e-12),
+                    f"{api}/{n}: summary {key} disagrees with native records",
+                )
         row["measured_shapes"] = len(ratios)
         if ratios:
             mean = math.fsum(ratios) / len(ratios)
             row.update(mean_speedup=mean, min_speedup=min(ratios), max_speedup=max(ratios))
-            expect(math.isclose(float(data.get("speedup", math.nan)), mean, rel_tol=1e-9),
-                   f"{api}: summary mean disagrees with arithmetic mean")
+            expect(
+                math.isclose(float(data.get("speedup", math.nan)), mean, rel_tol=1e-9),
+                f"{api}: summary mean disagrees with arithmetic mean",
+            )
             expect(mean >= 0.95, f"{api}: mean {mean:.9f} < 0.95")
         expect(len(ratios) == len(expected) and bool(ratios), f"{api}: no complete native comparison")
         row["status"] = "pass" if len(errors) == start else "fail"
-    return {"summary": str(summary_path.resolve()), "vendor": vendor, "baseline": baseline,
-            "minimum_api_mean": 0.95, "status": "pass" if not errors else "fail", "apis": rows, "errors": errors}
+    return {
+        "summary": str(summary_path.resolve()),
+        "vendor": vendor,
+        "baseline": baseline,
+        "minimum_api_mean": 0.95,
+        "status": "pass" if not errors else "fail",
+        "apis": rows,
+        "errors": errors,
+    }
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("summary", type=Path)
-    parser.add_argument("--output", type=Path, help="Write a separate verification record; source artifacts stay intact")
+    parser.add_argument(
+        "--output", type=Path, help="Write a separate verification record; source artifacts stay intact"
+    )
     args = parser.parse_args()
     result = check(args.summary)
     if args.output:

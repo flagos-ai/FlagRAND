@@ -1,5 +1,24 @@
 # FlagRAND 算子开发与 CI 规范
 
+## 后端目录
+
+沿用 FlagGems 的公共入口、厂商发现和后端覆盖方式：
+
+```text
+src/flagrand/
+├── ops/                         # 稳定的分布 API
+├── rng/                         # 通用 Philox
+├── fused/_internal/             # 通用融合生成和变换
+└── runtime/backend/
+    ├── device_finder.py         # 厂商发现
+    ├── backend_utils.py         # 厂商描述
+    └── _<vendor>/               # 厂商注册、算子覆盖和硬件特化
+```
+
+海光新增实现集中在 `_hygon/ops.py`；原生库只供 `benchmark/hygon_matrix/` 对照。
+其他后端保留现有 `corex/`、`metax/`、`nvidia/`、`ascend/` 内核模块，由相应
+`runtime/backend/_<vendor>/ops.py` 注册调用。新增厂商特化沿用后端目录，公共代码保持跨芯片可复用。
+
 ## 算子登记
 
 每个公开 API 必须在 `conf/operators.yaml` 中登记，并指向 `flagrand.ops.philox` 下的稳定接口、正确性测试和性能测试。`tools/validate_operator_registry.py` 会检查七个 API 是否完整、ID 是否唯一、测试文件及对应 pytest marker 是否存在。

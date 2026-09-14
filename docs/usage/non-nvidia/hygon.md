@@ -127,7 +127,10 @@ Compilation/warmup are excluded. The formal metric is synchronized end-to-end
 submitted call batch and may include gaps while Python submits work; the event
 metric is not an isolated kernel latency or a vendor profiler breakdown.
 The per-API score is the arithmetic mean of each shape's native/FlagRAND ratio.
-There is no cross-API mean and no invented speedup cutoff.
+Every API must cover all configured shapes and reach an arithmetic mean of at least 0.95x.
+There is no cross-API mean and no upper speedup limit. Run the CPU-only verification
+from [hardware acceptance, section 7](../../getting-started/hardware-acceptance.md#7-校验-summaryjson-和每个-api-的原生性能)
+on the complete artifacts; unsupported or missing comparisons do not count as passing.
 
 FlagRAND is checked against independent CPU Philox arithmetic, sequence offsets,
 replay, streams, finite/range and statistical tests. Native hipRAND is checked

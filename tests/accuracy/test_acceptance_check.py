@@ -2,9 +2,9 @@
 
 import copy
 import json
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 from tools.check_acceptance import APIS, check, shape_map
 
@@ -24,24 +24,35 @@ class AcceptanceCheckTests(unittest.TestCase):
             self.write(raw / "manifest.json", {"shape_map": {api: shapes}})
             self.write(folder / "accuracy_result.json", {api: {"result": "passed"}})
             self.write(folder / "performance_result.json", {api: {"result": "passed"}})
-            records = [{"backend": backend, "distribution": api, "n": n, "status": "pass", "total_ms_median": 1.0}
-                       for n in shapes for backend in ("flagrand_public", "hygon_hiprand")]
+            records = [
+                {"backend": backend, "distribution": api, "n": n, "status": "pass", "total_ms_median": 1.0}
+                for n in shapes
+                for backend in ("flagrand_public", "hygon_hiprand")
+            ]
             (raw / "records.jsonl").write_text("\n".join(json.dumps(r) for r in records))
-            entry = results.setdefault(operator, {
-                "customized": True,
-                "accuracy": {"total": 0, "passed": 0, "skipped": 0, "failed": 0, "status": "Passed", "details": {}},
-                "performance": {"status": "Passed", "test_case": operator, "data": {}},
-            })
+            entry = results.setdefault(
+                operator,
+                {
+                    "customized": True,
+                    "accuracy": {"total": 0, "passed": 0, "skipped": 0, "failed": 0, "status": "Passed", "details": {}},
+                    "performance": {"status": "Passed", "test_case": operator, "data": {}},
+                },
+            )
             entry["accuracy"]["total"] += 1
             entry["accuracy"]["passed"] += 1
             entry["performance"]["data"][dtype] = {
-                "result": "OK", "speedup": 1.0,
+                "result": "OK",
+                "speedup": 1.0,
                 "details": {f"({n},)": {"base": 1.0, "gems": 1.0, "speedup": 1.0} for n in shapes},
             }
         philox = copy.deepcopy(results["RAW_BITS"])
         philox["performance"]["test_case"] = "PHILOX4_32_10"
-        self.payload = {"timestamp": "2026-09-14 00:00:00", "total_duration": "0:01:00",
-                        "env": {"flagrand": {"vendor": "hygon"}}, "result": {"PHILOX4_32_10": philox, **results}}
+        self.payload = {
+            "timestamp": "2026-09-14 00:00:00",
+            "total_duration": "0:01:00",
+            "env": {"flagrand": {"vendor": "hygon"}},
+            "result": {"PHILOX4_32_10": philox, **results},
+        }
         self.write(self.summary, self.payload)
 
     def write(self, path, value):
