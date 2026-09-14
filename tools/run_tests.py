@@ -380,20 +380,9 @@ def run_accuracy(gpu_id: int, operator: dict[str, Any], config: RunnerConfig) ->
     started = time.monotonic()
     code = run_cmd(operator_id, "accuracy", command, env=worker_env(config.platform, gpu_id), config=config)
     duration = time.monotonic() - started
-    if code == TIMEOUT:
-        return {
-            "status": "Timeout",
-            "exit_code": TIMEOUT,
-            "total": 0,
-            "passed": 0,
-            "failed": 0,
-            "skipped": 0,
-            "errors": 0,
-            "duration": duration,
-        }
     if not raw_file.exists():
         return {
-            "status": "Error",
+            "status": "Timeout" if code == TIMEOUT else "Error",
             "exit_code": code,
             "total": 0,
             "passed": 0,
@@ -406,6 +395,11 @@ def run_accuracy(gpu_id: int, operator: dict[str, Any], config: RunnerConfig) ->
     result_file = operator_dir / "accuracy_result.json"
     raw_file.replace(result_file)
     result = parse_accuracy_data(result_file)
+    if code != 0:
+        # Completed cases remain useful even when LLVM aborts the following case.
+        # A partial list of passes cannot make the accuracy phase pass.
+        result['status'] = 'Timeout' if code == TIMEOUT else 'Failed' if code == 1 else 'Error'
+        result['details']['process_exit'] = {'exit_code': code}
     result.update(
         {
             "exit_code": code,
