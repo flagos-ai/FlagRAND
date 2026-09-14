@@ -10,7 +10,7 @@ import torch
 from benchmark.muxi_matrix.config import Profile
 
 
-def measure(operation: Callable[[], Any], profile: Profile) -> dict[str, float | int]:
+def measure(operation: Callable[[], Any], profile: Profile) -> dict[str, Any]:
     for _ in range(profile.warmup):
         operation()
     torch.cuda.synchronize()
@@ -42,6 +42,9 @@ def measure(operation: Callable[[], Any], profile: Profile) -> dict[str, float |
 
     return {
         "timing_calls_per_repeat": calls,
+        "enqueue_us_samples": enqueue_samples,
+        "total_ms_samples": total_samples,
+        "device_ms_samples": device_samples,
         "enqueue_us_median": statistics.median(enqueue_samples),
         "total_ms_median": statistics.median(total_samples),
         "total_ms_min": min(total_samples),
