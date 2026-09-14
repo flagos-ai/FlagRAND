@@ -71,7 +71,7 @@ def try_generate_normal(
             kwargs=kwargs,
             lognormal=lognormal,
         )
-    prepared = _prepare(generator, out, kwargs)
+    prepared = _prepare(generator, out, kwargs, default_block_size=512 if lognormal else 256)
     if prepared is None:
         return False
     engine, block_size, num_warps, _ = prepared

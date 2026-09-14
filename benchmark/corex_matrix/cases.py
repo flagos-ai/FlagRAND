@@ -69,13 +69,19 @@ def run_flagrand_case(distribution: str, n: int, seed: int, profile: Profile) ->
     return record
 
 
-def run_corex_curand_case(distribution: str, n: int, seed: int, profile: Profile) -> dict[str, Any]:
+def run_corex_curand_case(distribution: str, n: int, seed: int, profile: Profile, capabilities=None) -> dict[str, Any]:
     record = _base_record("corex_curand", distribution, n)
     record["seed"] = seed
-    if distribution not in COREX_CURAND_DISTRIBUTIONS:
+    unsupported = (
+        capabilities[distribution]["status"] == "unsupported"
+        if capabilities and distribution in capabilities
+        else distribution not in COREX_CURAND_DISTRIBUTIONS
+    )
+    if unsupported:
         record.update(
             status="unsupported",
             reason="CoreX cuRAND returns CURAND_STATUS_DOUBLE_PRECISION_REQUIRED for float64",
+            native_probe=capabilities[distribution] if capabilities else None,
         )
         return record
     try:

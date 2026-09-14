@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
+from pathlib import Path
 
 from tools.run_tests import (
     PLATFORM_ALIASES,
@@ -12,15 +15,49 @@ from tools.run_tests import (
     normalise_performance,
     parse_accuracy_data,
     parse_performance_data,
+    run_accuracy,
     run_performance,
     supported_operator_ids,
     worker_env,
 )
 
 
+def test_accuracy_retains_completed_case_when_next_case_aborts(tmp_path, monkeypatch) -> None:
+    import tools.run_tests as runner
+
+    plugin = Path(__file__).resolve().parents[1] / "conftest.py"
+    (tmp_path / "conftest.py").write_text(plugin.read_text())
+    test_file = tmp_path / "test_abrupt.py"
+    test_file.write_text(
+        """import os
+import pytest
+@pytest.mark.raw32
+def test_00_pass():
+    assert 1 == 1
+@pytest.mark.raw32
+def test_01_abort():
+    os._exit(86)
+"""
+    )
+    monkeypatch.setattr(runner, "ROOT", tmp_path)
+    monkeypatch.setattr(runner, "_accuracy_test_paths", lambda *_: [test_file])
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    config = RunnerConfig(
+        output_dir=tmp_path / "results", platform="iluvatar", profile="acceptance", dump_output=True, timeout=30
+    )
+    result = run_accuracy(0, {"id": "raw32"}, config)
+    assert result["status"] == "Error"
+    assert result["exit_code"] == 86
+    assert result["passed"] == 1
+    assert result["total"] == 1
+    records = json.loads((config.output_dir / result["data_file"]).read_text())
+    assert next(iter(records.values()))["result"] == "passed"
+
+
 def test_acceptance_profile_is_translated_for_each_backend(tmp_path) -> None:
     cases = {
         "nvidia": ("matrix", set()),
+        "hygon": ("matrix", set()),
         "metax": (
             "full",
             {
@@ -78,6 +115,52 @@ def test_nvidia_accuracy_combines_shared_cuda_and_native_curand_tests() -> None:
     paths = [path.name for path in _accuracy_test_paths(operator, "nvidia")]
 
     assert paths == ["test_philox_cuda.py", "test_philox_nvidia.py"]
+
+
+def test_iluvatar_child_keeps_the_agents_physical_device_mask(monkeypatch) -> None:
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1,3")
+    monkeypatch.setenv("ILUVATAR_VISIBLE_DEVICES", "0")
+    for logical, physical in [(0, "1"), (1, "3")]:
+        env = worker_env("iluvatar", logical)
+        assert env["CUDA_VISIBLE_DEVICES"] == env["ILUVATAR_VISIBLE_DEVICES"] == physical
+
+
+def test_cuda_children_keep_allocated_device_or_uuid_masks(monkeypatch) -> None:
+    for platform in ("thead", "metax", "nvidia"):
+        for mask in ("1,3", "GPU-first,GPU-second"):
+            monkeypatch.setenv("CUDA_VISIBLE_DEVICES", mask)
+            for logical, physical in enumerate(mask.split(",")):
+                assert worker_env(platform, logical)["CUDA_VISIBLE_DEVICES"] == physical
+
+
+def test_ascend_child_keeps_the_agents_runtime_mask(monkeypatch) -> None:
+    monkeypatch.setenv("ASCEND_RT_VISIBLE_DEVICES", "2,6")
+    monkeypatch.setenv("NPU_VISIBLE_DEVICES", "0")
+    for logical, physical in [(0, "2"), (1, "6")]:
+        env = worker_env("ascend-cann900", logical)
+        assert env["ASCEND_RT_VISIBLE_DEVICES"] == env["NPU_VISIBLE_DEVICES"] == physical
+
+
+def test_managed_phase_remains_in_the_node_workers_process_group(tmp_path) -> None:
+    from tools.run_tests import run_cmd
+
+    result = tmp_path / "pgrp.txt"
+    config = RunnerConfig(tmp_path, "iluvatar", "smoke", False, 10)
+    env = dict(os.environ, FLAGRAND_MANAGED_PROCESS_GROUP="1")
+    code = run_cmd(
+        "raw32",
+        "performance",
+        [
+            sys.executable,
+            "-c",
+            "import os,pathlib,sys; pathlib.Path(sys.argv[1]).write_text(str(os.getpgrp()))",
+            str(result),
+        ],
+        env=env,
+        config=config,
+    )
+    assert code == 0
+    assert int(result.read_text()) == os.getpgrp()
 
 
 def test_metax_accuracy_combines_shared_cuda_and_platform_dispatch_tests() -> None:

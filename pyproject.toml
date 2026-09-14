@@ -42,6 +42,7 @@ markers = [
     "ppu: requires a PPU-ZW810E runner and native RNG libraries",
     "metax: requires a MetaX C550 runner with MACA and mcRAND",
     "ascend_910c: requires a Huawei Ascend 910C runner with CANN 9.0",
+    "hygon: requires a Hygon DTK runtime with hipRAND",
     "runtime: backend and launch-policy checks",
     "raw32: raw 32-bit Philox output",
     "uniform_f32: float32 uniform distribution",

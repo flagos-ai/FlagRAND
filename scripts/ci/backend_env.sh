@@ -4,6 +4,12 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BACKEND="$1"
 
 case "$BACKEND" in
+    hygon)
+        export DTK_HOME="${DTK_HOME:-/opt/dtk}"
+        export PATH="$DTK_HOME/bin:$PATH"
+        export LD_LIBRARY_PATH="$DTK_HOME/lib:${LD_LIBRARY_PATH:-}"
+        export FLAGRAND_VENDOR=hygon
+        ;;
     nvidia)
         export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
         export PATH="$CUDA_HOME/bin:$PATH"
@@ -23,7 +29,15 @@ case "$BACKEND" in
         ;;
     ascend-cann900)
         set +u
-        source /usr/local/Ascend/ascend-toolkit/set_env.sh
+        # CANN's optional driver-path lookup uses grep | cut and expects the
+        # pipeline's final status. Restore the caller's pipefail after setup.
+        if [[ -o pipefail ]]; then
+            set +o pipefail
+            source /usr/local/Ascend/ascend-toolkit/set_env.sh
+            set -o pipefail
+        else
+            source /usr/local/Ascend/ascend-toolkit/set_env.sh
+        fi
         set -u
         export FLAGRAND_VENDOR=ascend
         ;;

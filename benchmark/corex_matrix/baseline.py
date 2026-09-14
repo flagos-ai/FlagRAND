@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import os
 from pathlib import Path
 
@@ -39,3 +40,30 @@ class CorexCurandGenerator:
 
     def __exit__(self, exc_type, exc, traceback) -> None:
         self.close()
+
+
+def probe_native_fp64(seed):
+    """Record actual native return codes instead of assuming every CoreX has the same FP64 support."""
+    result = {}
+    with CorexCurandGenerator(seed=seed) as wrapper:
+        generator = wrapper._generator
+        version = ctypes.c_int()
+        generator._lib.curandGetVersion.argtypes = [ctypes.POINTER(ctypes.c_int)]
+        version_status = int(generator._lib.curandGetVersion(ctypes.byref(version)))
+        result["version"] = {"status": version_status, "value": version.value}
+        generator._set_current_stream()
+        output = torch.empty(2, device="cuda", dtype=torch.float64)
+        common = (generator._handle, ctypes.c_void_p(output.data_ptr()), ctypes.c_size_t(2))
+        for api, function, args in (
+            ("uniform_f64", "curandGenerateUniformDouble", common),
+            ("normal_f64", "curandGenerateNormalDouble", common + (ctypes.c_double(0), ctypes.c_double(1))),
+            ("lognormal_f64", "curandGenerateLogNormalDouble", common + (ctypes.c_double(0), ctypes.c_double(1))),
+        ):
+            status = int(getattr(generator._lib, function)(*args))
+            result[api] = {
+                "function": function,
+                "return_code": status,
+                "status": "pass" if status == 0 else "unsupported" if status == 106 else "error",
+            }
+        torch.cuda.synchronize()
+    return result

@@ -46,10 +46,14 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]):
     if not report.passed:
         record["reason"] = report.longreprtext
     records[item.nodeid] = record
+    _write_records(item.config)
 
 
 def pytest_sessionfinish(session: pytest.Session) -> None:
-    config = session.config
+    _write_records(session.config)
+
+
+def _write_records(config: pytest.Config) -> None:
     if config.getoption("record") != "json":
         return
     output = config.getoption("output")

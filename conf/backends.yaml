@@ -2,6 +2,12 @@ pypi_base: "https://resource.flagos.net/repository/flagos-pypi-{vendor}/simple"
 mirror: "https://mirrors.aliyun.com/pypi/simple"
 
 backends:
+  hygon:
+    python: "3.10"
+    system_site_packages: true
+    triton: []
+    deps: []
+
   nvidia:
     python: "3.10"
     system_site_packages: true

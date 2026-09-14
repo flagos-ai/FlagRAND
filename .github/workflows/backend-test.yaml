@@ -91,6 +91,7 @@ jobs:
             nvidia_results/
             muxi_results/
             corex_results/
+            hygon_results/
             ppu_logs/
             ppu_results/
             ascend_910c_logs/

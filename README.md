@@ -9,7 +9,7 @@ FlagRAND provides a Philox4x32-10 host API implemented with Triton. The public s
 - `src/flagrand/ascend`, `corex`, `metax`, `nvidia`: vendor contract adapters and kernels.
 - `conf/operators.yaml`: operator registry and required test coverage.
 - `tests/accuracy`: contract, deterministic and statistical correctness tests.
-- `benchmark`: end-to-end NVIDIA, CoreX, PPU, MetaX/Muxi and Ascend 910C performance matrices.
+- `benchmark`: end-to-end NVIDIA, CoreX, PPU, MetaX/Muxi, Hygon and Ascend 910C performance matrices.
 - `scripts`: reproducible platform and CI entry points.
 - `docs`: installation, usage and contribution guides.
 
@@ -32,6 +32,8 @@ python -m twine check dist/*
   correctness and performance matrices.
 - [MetaX C550](docs/usage/non-nvidia/muxi.md): MACA container, native mcRAND comparison,
   platform dispatch and acceptance matrices.
+- [Hygon BW1000](docs/usage/non-nvidia/hygon.md): HIP/gfx936 dispatch, binary64
+  parameter accuracy, native hipRAND comparison, unified summary.json and offline delivery.
 - [Non-NVIDIA platforms](docs/usage/non-nvidia/): backend-specific runtime and
   diagnostic notes.
 - [Development](docs/contribution/development.md): operator registration,

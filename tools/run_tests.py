@@ -49,8 +49,11 @@ PERFORMANCE_MODULES = {
     "ascend-cann900": "benchmark.run_ascend_910c",
     "iluvatar": "benchmark.run_corex",
     "thead": "benchmark.run_ppu",
+    "hygon": "benchmark.run_hygon",
 }
 PLATFORM_ALIASES = {
+    "hygon": "hygon",
+    "hcu": "hygon",
     "nvidia": "nvidia",
     "cuda": "nvidia",
     "h20": "nvidia",
@@ -161,6 +164,10 @@ def detect_platform() -> str:
 
 
 def supported_operator_ids(selected_platform: str) -> set[str]:
+    if selected_platform == "hygon":
+        from benchmark.hygon_matrix.config import ALL_DISTRIBUTIONS
+
+        return set(ALL_DISTRIBUTIONS)
     if selected_platform == "nvidia":
         from benchmark.nvidia_matrix.config import ALL_DISTRIBUTIONS
 
@@ -235,13 +242,23 @@ def worker_env(platform: str, gpu_id: int) -> dict[str, str]:
     env = os.environ.copy()
     device = str(gpu_id)
     if platform == "ascend-cann900":
-        env["ASCEND_RT_VISIBLE_DEVICES"] = device
-        env["NPU_VISIBLE_DEVICES"] = device
+        visible = env.get("ASCEND_RT_VISIBLE_DEVICES", env.get("NPU_VISIBLE_DEVICES"))
+        selected = visible.split(",")[gpu_id] if visible else device
+        env["ASCEND_RT_VISIBLE_DEVICES"] = selected
+        env["NPU_VISIBLE_DEVICES"] = selected
+    elif platform == "hygon":
+        visible = env.get("HIP_VISIBLE_DEVICES", env.get("CUDA_VISIBLE_DEVICES"))
+        selected = visible.split(",")[gpu_id] if visible else device
+        env["HIP_VISIBLE_DEVICES"] = selected
+        env["CUDA_VISIBLE_DEVICES"] = selected
     elif platform == "iluvatar":
-        env["ILUVATAR_VISIBLE_DEVICES"] = device
-        env["CUDA_VISIBLE_DEVICES"] = device
+        visible = env.get("CUDA_VISIBLE_DEVICES", env.get("ILUVATAR_VISIBLE_DEVICES"))
+        selected = visible.split(",")[gpu_id] if visible else device
+        env["ILUVATAR_VISIBLE_DEVICES"] = selected
+        env["CUDA_VISIBLE_DEVICES"] = selected
     else:
-        env["CUDA_VISIBLE_DEVICES"] = device
+        visible = env.get("CUDA_VISIBLE_DEVICES")
+        env["CUDA_VISIBLE_DEVICES"] = visible.split(",")[gpu_id] if visible else device
     python_paths = [str(ROOT / "src"), str(ROOT)]
     if env.get("PYTHONPATH"):
         python_paths.append(env["PYTHONPATH"])
@@ -268,7 +285,14 @@ def run_cmd(
         handles = [stdout, stderr]
         stderr.write(f"[CMD] {' '.join(command)}\n[CWD] {ROOT}\n\n")
         stderr.flush()
-    process = subprocess.Popen(command, cwd=ROOT, env=env, stdout=stdout, stderr=stderr, start_new_session=True)
+    process = subprocess.Popen(
+        command,
+        cwd=ROOT,
+        env=env,
+        stdout=stdout,
+        stderr=stderr,
+        start_new_session=env.get("FLAGRAND_MANAGED_PROCESS_GROUP") != "1",
+    )
     try:
         process.wait(timeout=config.timeout)
         return process.returncode
@@ -326,6 +350,8 @@ def parse_accuracy_data(result_file: Path) -> dict[str, Any]:
 
 
 def _accuracy_test_paths(operator: dict[str, Any], platform: str) -> list[Path]:
+    if platform == "hygon":
+        return [ROOT / str(operator["accuracy_test"]), ROOT / "tests/accuracy/test_philox_hygon.py"]
     if platform == "ascend-cann900":
         matches = [path for path in operator["platform_accuracy_tests"] if "ascend_910c" in path]
         return [ROOT / matches[0]]
@@ -334,6 +360,8 @@ def _accuracy_test_paths(operator: dict[str, Any], platform: str) -> list[Path]:
         paths.extend(ROOT / str(path) for path in operator["platform_accuracy_tests"] if "nvidia" in str(path))
     elif platform == "metax":
         paths.extend(ROOT / str(path) for path in operator["platform_accuracy_tests"] if "metax" in str(path))
+    elif platform == "iluvatar":
+        paths.append(ROOT / "tests/accuracy/test_philox_iluvatar.py")
     return paths
 
 
@@ -361,20 +389,9 @@ def run_accuracy(gpu_id: int, operator: dict[str, Any], config: RunnerConfig) ->
     started = time.monotonic()
     code = run_cmd(operator_id, "accuracy", command, env=worker_env(config.platform, gpu_id), config=config)
     duration = time.monotonic() - started
-    if code == TIMEOUT:
-        return {
-            "status": "Timeout",
-            "exit_code": TIMEOUT,
-            "total": 0,
-            "passed": 0,
-            "failed": 0,
-            "skipped": 0,
-            "errors": 0,
-            "duration": duration,
-        }
     if not raw_file.exists():
         return {
-            "status": "Error",
+            "status": "Timeout" if code == TIMEOUT else "Error",
             "exit_code": code,
             "total": 0,
             "passed": 0,
@@ -387,6 +404,11 @@ def run_accuracy(gpu_id: int, operator: dict[str, Any], config: RunnerConfig) ->
     result_file = operator_dir / "accuracy_result.json"
     raw_file.replace(result_file)
     result = parse_accuracy_data(result_file)
+    if code != 0:
+        # Completed cases remain useful even when LLVM aborts the following case.
+        # A partial list of passes cannot make the accuracy phase pass.
+        result["status"] = "Timeout" if code == TIMEOUT else "Failed" if code == 1 else "Error"
+        result["details"]["process_exit"] = {"exit_code": code}
     result.update(
         {
             "exit_code": code,
@@ -407,7 +429,7 @@ def _performance_command(
     profile = config.profile
     benchmark_profile = (
         "matrix"
-        if config.platform in {"iluvatar", "nvidia"} and profile == "acceptance"
+        if config.platform in {"iluvatar", "nvidia", "hygon"} and profile == "acceptance"
         else ("full" if profile == "acceptance" else profile)
     )
     command = [
@@ -476,6 +498,7 @@ def normalise_performance(operator_id: str, records: list[dict[str, Any]]) -> di
         latency = float(record["total_ms_median"])
         speedup = None
         for key in (
+            "speedup_vs_hygon_hiprand",
             "speedup_vs_nvidia_curand",
             "speedup_vs_corex_curand",
             "speedup_vs_mcrand",
@@ -678,7 +701,22 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     started_at = dt.datetime.now()
     selected_platform = detect_platform()
-    env_info = probe_env(selected_platform)
+    if os.environ.get("FLAGRAND_MANAGED_PROCESS_GROUP") == "1":
+        # Release the probe's context before a benchmark starts; the supervisor is CPU-only.
+        env_info = json.loads(
+            subprocess.check_output(
+                [
+                    sys.executable,
+                    "-c",
+                    "import json,sys; from tools.run_tests import probe_env; print(json.dumps(probe_env(sys.argv[1])))",
+                    selected_platform,
+                ],
+                cwd=ROOT,
+                text=True,
+            )
+        )
+    else:
+        env_info = probe_env(selected_platform)
     catalog = get_ops_from_inventory()
     operators = get_ops_to_test(
         catalog,

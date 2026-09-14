@@ -28,6 +28,12 @@ def _philox_generate(seed, counter):
 
 
 @triton.jit
+def _counter_at(base_counter, index):
+    # Promote before addition: a tile can cross the signed/unsigned 32-bit boundary.
+    return tl.cast(base_counter, tl.uint64) + tl.cast(index, tl.uint64)
+
+
+@triton.jit
 def _philox_window4(seed, counter, SHIFT: tl.constexpr):
     a0, a1, a2, a3 = _philox_generate(seed, counter)
     if SHIFT == 0:
@@ -45,7 +51,7 @@ def _philox_window4(seed, counter, SHIFT: tl.constexpr):
 def _raw_kernel(out, seed, base_counter, n_counters, BLOCK: tl.constexpr):
     counter = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = counter < n_counters
-    r0, r1, r2, r3 = _philox_generate(seed, base_counter + counter)
+    r0, r1, r2, r3 = _philox_generate(seed, _counter_at(base_counter, counter))
 
     r02 = tl.join(r0, r2)
     r13 = tl.join(r1, r3)
@@ -54,7 +60,7 @@ def _raw_kernel(out, seed, base_counter, n_counters, BLOCK: tl.constexpr):
     tl.store(out + offsets, tile.to(tl.int32, bitcast=True), mask=mask[:, None])
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["base_counter"])
 def _raw_generic_kernel(
     out,
     seed,
@@ -66,7 +72,7 @@ def _raw_generic_kernel(
 ):
     group = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = group < n_groups
-    r0, r1, r2, r3 = _philox_window4(seed, base_counter + group, SHIFT)
+    r0, r1, r2, r3 = _philox_window4(seed, _counter_at(base_counter, group), SHIFT)
     base = group * 4
     tl.store(out + base + 0, r0.to(tl.int32, bitcast=True), mask=mask & (base + 0 < n))
     tl.store(out + base + 1, r1.to(tl.int32, bitcast=True), mask=mask & (base + 1 < n))
@@ -78,7 +84,7 @@ def _raw_generic_kernel(
 def _uniform_f32_kernel(out, seed, base_counter, n_counters, BLOCK: tl.constexpr):
     counter = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = counter < n_counters
-    r0, r1, r2, r3 = _philox_generate(seed, base_counter + counter)
+    r0, r1, r2, r3 = _philox_generate(seed, _counter_at(base_counter, counter))
     u0 = uint32_to_uniform(r0)
     u1 = uint32_to_uniform(r1)
     u2 = uint32_to_uniform(r2)
@@ -91,7 +97,7 @@ def _uniform_f32_kernel(out, seed, base_counter, n_counters, BLOCK: tl.constexpr
     tl.store(out + offsets, tile, mask=mask[:, None])
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["base_counter"])
 def _uniform_f32_generic_kernel(
     out,
     seed,
@@ -103,7 +109,7 @@ def _uniform_f32_generic_kernel(
 ):
     group = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = group < n_groups
-    r0, r1, r2, r3 = _philox_window4(seed, base_counter + group, SHIFT)
+    r0, r1, r2, r3 = _philox_window4(seed, _counter_at(base_counter, group), SHIFT)
     base = group * 4
     tl.store(out + base + 0, uint32_to_uniform(r0), mask=mask & (base + 0 < n))
     tl.store(out + base + 1, uint32_to_uniform(r1), mask=mask & (base + 1 < n))
@@ -127,7 +133,7 @@ def _normal_f32_kernel(
     counter = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = counter < n_counters
     base = counter * 4
-    r0, r1, r2, r3 = _philox_generate(seed, base_counter + counter)
+    r0, r1, r2, r3 = _philox_generate(seed, _counter_at(base_counter, counter))
     z0, z1 = uniform_to_normal_portable_f32(uint32_to_uniform(r0), uint32_to_uniform(r1))
     z2, z3 = uniform_to_normal_portable_f32(uint32_to_uniform(r2), uint32_to_uniform(r3))
 
@@ -170,7 +176,7 @@ def _normal_f32_generic_kernel(
 ):
     group = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = group < n_groups
-    r0, r1, r2, r3 = _philox_window4(seed, base_counter + group, SHIFT)
+    r0, r1, r2, r3 = _philox_window4(seed, _counter_at(base_counter, group), SHIFT)
     z0, z1 = uniform_to_normal_portable_f32(uint32_to_uniform(r0), uint32_to_uniform(r1))
     z2, z3 = uniform_to_normal_portable_f32(uint32_to_uniform(r2), uint32_to_uniform(r3))
 
@@ -202,7 +208,7 @@ def _uniform_f64_kernel(out, seed, base_counter, n, n_counters, BLOCK: tl.conste
     counter = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = counter < n_counters
     base = counter * 2
-    r0, r1, r2, r3 = _philox_generate(seed, base_counter + counter)
+    r0, r1, r2, r3 = _philox_generate(seed, _counter_at(base_counter, counter))
     u0 = uint32_pair_to_uniform64(r0, r1)
     u1 = uint32_pair_to_uniform64(r2, r3)
     tile = tl.join(u0, u1)
@@ -222,7 +228,7 @@ def _uniform_f64_generic_kernel(
 ):
     group = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = group < n_groups
-    r0, r1, r2, r3 = _philox_window4(seed, base_counter + group, SHIFT)
+    r0, r1, r2, r3 = _philox_window4(seed, _counter_at(base_counter, group), SHIFT)
     base = group * 2
     tl.store(out + base + 0, uint32_pair_to_uniform64(r0, r1), mask=mask & (base + 0 < n))
     tl.store(out + base + 1, uint32_pair_to_uniform64(r2, r3), mask=mask & (base + 1 < n))
@@ -244,7 +250,7 @@ def _normal_f64_kernel(
     counter = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = counter < n_counters
     base = counter * 2
-    r0, r1, r2, r3 = _philox_generate(seed, base_counter + counter)
+    r0, r1, r2, r3 = _philox_generate(seed, _counter_at(base_counter, counter))
     z0, z1 = uniform_to_normal_f64(
         uint32_pair_to_uniform64(r0, r1),
         uint32_pair_to_uniform64(r2, r3),
@@ -281,7 +287,7 @@ def _normal_f64_generic_kernel(
 ):
     group = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = group < n_groups
-    r0, r1, r2, r3 = _philox_window4(seed, base_counter + group, SHIFT)
+    r0, r1, r2, r3 = _philox_window4(seed, _counter_at(base_counter, group), SHIFT)
     z0, z1 = uniform_to_normal_f64(
         uint32_pair_to_uniform64(r0, r1),
         uint32_pair_to_uniform64(r2, r3),
@@ -316,7 +322,7 @@ if HAS_LIBTUNER:
     def _raw_kernel_tuned(out, seed, base_counter, n_counters, BLOCK: tl.constexpr):
         counter = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         mask = counter < n_counters
-        r0, r1, r2, r3 = _philox_generate(seed, base_counter + counter)
+        r0, r1, r2, r3 = _philox_generate(seed, _counter_at(base_counter, counter))
         r02 = tl.join(r0, r2)
         r13 = tl.join(r1, r3)
         tile = tl.reshape(tl.join(r02, r13), (BLOCK, 4))
@@ -335,7 +341,7 @@ if HAS_LIBTUNER:
     def _uniform_f32_kernel_tuned(out, seed, base_counter, n_counters, BLOCK: tl.constexpr):
         counter = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         mask = counter < n_counters
-        r0, r1, r2, r3 = _philox_generate(seed, base_counter + counter)
+        r0, r1, r2, r3 = _philox_generate(seed, _counter_at(base_counter, counter))
         u0 = uint32_to_uniform(r0)
         u1 = uint32_to_uniform(r1)
         u2 = uint32_to_uniform(r2)
@@ -369,7 +375,7 @@ if HAS_LIBTUNER:
         counter = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         mask = counter < n_counters
         base = counter * 4
-        r0, r1, r2, r3 = _philox_generate(seed, base_counter + counter)
+        r0, r1, r2, r3 = _philox_generate(seed, _counter_at(base_counter, counter))
         z0, z1 = uniform_to_normal_portable_f32(uint32_to_uniform(r0), uint32_to_uniform(r1))
         z2, z3 = uniform_to_normal_portable_f32(uint32_to_uniform(r2), uint32_to_uniform(r3))
         if STANDARD:
@@ -411,7 +417,7 @@ if HAS_LIBTUNER:
         counter = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         mask = counter < n_counters
         base = counter * 2
-        r0, r1, r2, r3 = _philox_generate(seed, base_counter + counter)
+        r0, r1, r2, r3 = _philox_generate(seed, _counter_at(base_counter, counter))
         z0, z1 = uniform_to_normal_f64(
             uint32_pair_to_uniform64(r0, r1),
             uint32_pair_to_uniform64(r2, r3),

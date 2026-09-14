@@ -9,6 +9,7 @@ class vendors(Enum):
     ILUVATAR = 2
     ASCEND = 3
     THEAD = 4
+    HYGON = 5
 
     @classmethod
     def get_all_vendors(cls) -> dict[str, "vendors"]:
