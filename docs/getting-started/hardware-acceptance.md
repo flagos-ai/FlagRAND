@@ -201,8 +201,7 @@ export SUMMARY="$PWD/nvidia_results/ci_${FLAGRAND_RUN_ID}/summary.json"
 
 ### 5.1 获取源码
 
-在宿主机克隆指定分支，并记录本次验收的代码版本。MetaX 验收镜像不提供 Git，因此
-源码由宿主机准备，再挂载进容器。
+在宿主机克隆指定分支，并记录本次验收的代码版本。
 
 ```bash
 git clone --branch "${FLAGRAND_REF:-main}" --single-branch \
@@ -334,11 +333,8 @@ Preflight: pass
 
 ### 5.5 执行正式验收
 
-统一 runner 以 `metax` 为 canonical backend（`muxi` 和 `maca` 仅作别名），并使用 mcRAND
+统一 runner 以 `metax` 为 canonical backend，并使用 mcRAND
 作为七个 Host API 的原生性能 baseline：
-
-性能验收以每个 API 全部实测 shape 加速比的算术平均值 `>= 0.95x` 为通过条件，
-不要求每个 shape 单独达标，不计算跨 API 平均值。加速比不设上限，也不因高加速比额外提示。
 
 ```bash
 export FLAGRAND_RUN_ID="metax_$(date +%Y%m%d_%H%M%S)"
@@ -368,51 +364,26 @@ python3 -m benchmark.run_muxi \
 输出包含 `Acceptance status: pass (7/7 APIs meeting target)` 和
 `Completed 216 records with 0 failure(s).`
 
-pre-main 沐曦分支已产生过上述 216 条通过结果；将 NVIDIA 新 main 与 MetaX 独立分流
-集成后，必须以新 `main` 的 C550 实测产物作为本次验收结论，不沿用 pre-main 性能数值。
-
-完成后执行第 7 节校验结果。
-
 ## 6. 海光 BW1000 / DTK 26.04
 
 ### 6.1 获取源码
 
-联网工作机可使用前述克隆方式。无法访问 GitHub 的计算节点，上传本次提交的源码归档：
+在宿主机克隆指定分支，并记录本次验收的代码版本。
 
 ```bash
-# 在持有目标提交的工作机执行，归档包含 src、benchmark、tests、tools、conf 和 scripts。
-git rev-parse HEAD
-git archive --format=tar.gz -o /tmp/flagrand-acceptance-source.tar.gz HEAD
-```
-
-将该文件通过堡垒机上传后，在计算节点解压到本轮源码目录：
-
-```bash
-mkdir -p FlagRAND
-tar -xzf /path/to/flagrand-acceptance-source.tar.gz -C FlagRAND
+git clone --branch "${FLAGRAND_REF:-main}" --single-branch \
+  git@github.com:flagos-ai/FlagRAND.git FlagRAND
 cd FlagRAND
+git rev-parse HEAD
 ```
 
-记录来源提交和归档 SHA256。平台 node agent 上传同一份完整源码并记录运行 ID 时，
-可以直接在其 `vendor/flagrand` 目录执行下述步骤。
 
 ### 6.2 使用 DTK 环境
 
 复用匹配驱动的 DTK 容器/环境。已验证环境为 DTK 26.04、PyTorch 2.10.0、
 HIP 6.3.26113、Triton 3.6.0 / FlagTree 0.6.0+hcu.git46341ffa，
 Triton target 为 `hip / gfx936 / warp_size=64`。
-
-直接从源码运行时无需联网安装：
-
-```bash
-export PYTHON_BIN=/usr/bin/python3
-export PYTHONPATH="$PWD/src:$PWD${PYTHONPATH:+:$PYTHONPATH}"
-source scripts/ci/backend_env.sh hygon
-```
-
-已有调度器分配的设备掩码应原样保留；独立执行时先选择空闲设备并设置
-`CUDA_VISIBLE_DEVICES` / `HIP_VISIBLE_DEVICES`。
-需要安装到独立项目环境时可运行 `./setup.sh hygon`，它继承 DTK 的系统硬件包。
+可以直接使用flagtree/flagos镜像
 
 ### 6.3 检查设备与原生库
 
@@ -439,47 +410,13 @@ FLAGRAND_PERF_PROFILE=acceptance \
 export SUMMARY="$PWD/hygon_results/ci_${FLAGRAND_RUN_ID}/summary.json"
 ```
 
-该脚本调用与其他芯片相同的 `scripts/ci/run_backend_ci.sh hygon`。平台 node agent
-直接调用此统一入口时，执行内容一致；测试作为单次有限研究任务、随机启动，并计入节点日预算。
+该脚本调用与其他芯片相同的 `scripts/ci/run_backend_ci.sh hygon`。
 
-执行环境检查、runner 自测及海光 API 回归后，统一 runner 为七个 API 分别执行正确性和性能。
-正确性包含独立 CPU Philox oracle、seed 重放、非对齐 offset、整段/分段连续性、
-64 位 counter 进位、非默认 mean/stddev 的 FP64 精度，以及分布统计检查。
-FlagRAND 与 hipRAND 分别验证，不要求两家原生 generator 的输出顺序逐元素一致。
 
-固定矩阵为 raw32/uniform_f32/uniform_f64 各 44 个 shape，其他四个 API 各 42 个 shape，
-共 300 对、600 条原生/FlagRAND 记录。每个 shape 预热 5 次、正式 11 组、目标预算 200 ms。
-两方复用 generator 和预分配输出，使用当前 HIP stream，编译预热不计入正式指标；
-以同步端到端 `total_ms_median` 计算加速比。该计时协议保持已有海光基线不变。
-
-完成后执行第 7 节，必须重新计算七个 API 的均值并检查完整原始矩阵。
-详细硬件优化证据见 [海光指南](../usage/non-nvidia/hygon.md)。
-
-### 6.5 补齐文档后的实测复核（2026-09-14）
-
-在 BW1000 节点 `bm-srwl-nj-zone3-d-bw1000-64g-2-3` 的物理 GPU1 上按上述统一入口执行。
-运行 ID 为 `4a7aad3bfb43477eb62c4a2e25333cd3`，单次预算1800秒，实际记入节点预算583.8秒。
-
-| API | shape 数 | API 算术平均加速比 | 最小加速比 | 最大加速比 |
-|---|---:|---:|---:|---:|
-| raw32 | 44 | 1.477003x | 0.648777x | 2.248186x |
-| uniform_f32 | 44 | 1.601918x | 0.628365x | 2.498856x |
-| uniform_f64 | 44 | 1.324046x | 0.940631x | 3.361684x |
-| normal_f32 | 42 | 1.125916x | 0.856483x | 3.195905x |
-| normal_f64 | 42 | 0.997898x | 0.623806x | 1.190068x |
-| lognormal_f32 | 42 | 1.012558x | 0.970962x | 1.109121x |
-| lognormal_f64 | 42 | 1.010029x | 0.662442x | 1.189366x |
-
-300个原生/FlagRAND配对、600条记录全部通过；正确性119 passed、8 skipped、0 failed。
-8项平台专项skip保留原始原因；七API都有通过的正确性用例和完整原生性能数据。
-14阶段全部完成，节点上执行第7节命令返回 `SUMMARY_JSON_CHECK=PASS`。
-结果根目录是 `hygon_results/ci_4a7aad3bfb43477eb62c4a2e25333cd3_1789386603/`。
-本轮未修改算子实现；复测数值变化不记为本轮优化收益。
 
 ## 7. 校验 summary.json 和每个 API 的原生性能
 
 使用刚完成的验收根目录 `summary.json`，并保留其旁边的七个 API 子目录。
-检查脚本只读取产物，可在计算节点或下载结果后的工作机运行，不占用 GPU。
 
 ```bash
 PYTHON_BIN="${PYTHON_BIN:-$PWD/.venv/bin/python}"
@@ -490,7 +427,6 @@ PYTHON_BIN="${PYTHON_BIN:-$PWD/.venv/bin/python}"
 脚本核对根字段 `timestamp / total_duration / env / result`、五个交付项、正确性计数，
 再按当前源码中各后端的固定配置核对每个 API 的全部 shape，直接从原生库和 FlagRAND 的
 `records.jsonl` 重算 `total_ms_median` 比值，并与 `summary.json` 的逐 shape 值和均值核对。
-`PHILOX4_32_10` 和 `RAW_BITS` 对应同一个 raw32 API，不算两种独立 API。
 
 七个 API 均完整且均值 `>= 0.95x` 时，最后一行为：
 
