@@ -5,6 +5,8 @@ from typing import Any
 
 from triton.runtime.driver import driver
 
+from flagrand.runtime.compiled_launcher import CachedKernelLauncher
+
 
 class MetaXKernelLauncher:
     """Cache MACA Triton kernels and launch their compiled binary directly."""
@@ -22,6 +24,17 @@ class MetaXKernelLauncher:
         self._option_names = option_names
         self._max_entries = max_entries
         self._entries: OrderedDict[object, Any] = OrderedDict()
+        # Triton 3.6 exposes device_caches in place of the legacy binder.
+        self._modern_launcher = (
+            CachedKernelLauncher(
+                kernel,
+                constexpr_names=constexpr_names,
+                option_names=option_names,
+                max_entries=max_entries,
+            )
+            if hasattr(kernel, "device_caches")
+            else None
+        )
 
     def launch(
         self,
@@ -32,6 +45,14 @@ class MetaXKernelLauncher:
         *,
         specialization_key: object | None = None,
     ) -> Any:
+        if self._modern_launcher is not None:
+            return self._modern_launcher.launch(
+                grid,
+                args,
+                constexpr_values,
+                option_values,
+                specialization_key=specialization_key,
+            )
         del specialization_key
         grid3 = _normalize_grid(grid)
         kwargs = dict(zip(self._constexpr_names, constexpr_values))

@@ -81,9 +81,9 @@ def test_metax_backend_is_active() -> None:
 @pytest.mark.lognormal_f64
 def test_metax_public_api_uses_vendor_dispatch() -> None:
     expected = "flagrand.runtime.backend._metax.ops"
-    assert curand.try_generate_raw.__module__ == expected
-    assert curand.try_generate_uniform.__module__ == expected
-    assert curand.try_generate_normal.__module__ == expected
+    assert curand._philox.try_generate_raw.__module__ == expected
+    assert curand._philox.try_generate_uniform.__module__ == expected
+    assert curand._philox.try_generate_normal.__module__ == expected
     for name in (
         "generate",
         "generate_uniform",
@@ -93,7 +93,8 @@ def test_metax_public_api_uses_vendor_dispatch() -> None:
         "generate_lognormal",
         "generate_lognormal_double",
     ):
-        assert getattr(curand, name).__module__ == expected
+        assert getattr(curand, name).__module__ == "flagrand.curand"
+        assert getattr(curand._philox, name).__module__ == expected
 
 
 @pytest.mark.uniform_f32

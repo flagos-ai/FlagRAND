@@ -1,6 +1,6 @@
 # FlagRAND
 
-FlagRAND provides a Philox4x32-10 host API implemented with Triton. The public surface mirrors the seven random-number operations required by the current delivery: raw32, uniform/normal/log-normal in float32 and float64-compatible forms.
+FlagRAND provides Triton host APIs for Philox4x32-10, XORWOW, MRG32K3A and MTGP32. The public surface includes raw32, float32/float64 uniform, normal and log-normal outputs, and integer Poisson outputs. The new generator families and Poisson paths are under device-specific performance iteration; see [RNG families](docs/usage/rng-families.md) for state semantics and current evidence.
 
 ## Layout
 
@@ -32,6 +32,8 @@ python -m twine check dist/*
   correctness and performance matrices.
 - [MetaX C550](docs/usage/non-nvidia/muxi.md): MACA container, native mcRAND comparison,
   platform dispatch and acceptance matrices.
+- [C550 RNG families](docs/usage/c550-environment.md): the measured MACA image,
+  source installation, four-generator reproduction and result conventions.
 - [Hygon BW1000](docs/usage/non-nvidia/hygon.md): HIP/gfx936 dispatch, binary64
   parameter accuracy, native hipRAND comparison, unified summary.json and offline delivery.
 - [Non-NVIDIA platforms](docs/usage/non-nvidia/): backend-specific runtime and

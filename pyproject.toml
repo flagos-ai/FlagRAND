@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "FlagRAND"
 version = "0.1.0"
-description = "Philox Host API implementation with Triton."
+description = "Random-number generator host APIs implemented with Triton."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -15,6 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
+    "PyYAML>=6.0,<7",
     "pytest>=8.0,<10",
 ]
 dev = [
@@ -32,6 +33,9 @@ dev = [
 where = ["src"]
 include = ["flagrand*"]
 
+[tool.setuptools.package-data]
+"flagrand.rng._xorwow" = ["SOURCE.md"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests/accuracy"]
 addopts = "--basetemp=.pytest_tmp"
@@ -45,6 +49,8 @@ markers = [
     "hygon: requires a Hygon DTK runtime with hipRAND",
     "runtime: backend and launch-policy checks",
     "raw32: raw 32-bit Philox output",
+    "rng_families: XORWOW, MRG32K3A, MTGP32 and Poisson host APIs",
+    "poisson: integer Poisson distribution",
     "uniform_f32: float32 uniform distribution",
     "uniform_f64: float64 Huawei/cuRAND-compatible uniform distribution",
     "normal_f32: float32 normal distribution",

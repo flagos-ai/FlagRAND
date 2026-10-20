@@ -94,6 +94,7 @@ class DeviceDetector:
             "maca": "metax",
             "ppu": "thead",
             "hcu": "hygon",
+            "musa": "mthreads",
         }
         if backend_name in target_vendors:
             return target_vendors[backend_name]

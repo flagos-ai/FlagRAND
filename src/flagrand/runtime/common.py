@@ -10,6 +10,7 @@ class vendors(Enum):
     ASCEND = 3
     THEAD = 4
     HYGON = 5
+    MTHREADS = 6
 
     @classmethod
     def get_all_vendors(cls) -> dict[str, "vendors"]:
@@ -19,6 +20,7 @@ class vendors(Enum):
 _VENDOR_TORCH_ATTR = {
     "ascend": "npu",
     "iluvatar": "corex",
+    "mthreads": "musa",
 }
 
 

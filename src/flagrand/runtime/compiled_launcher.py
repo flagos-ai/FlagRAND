@@ -61,14 +61,20 @@ class CachedKernelLauncher:
         specialization_key: object | None = None,
     ) -> Any:
         grid3 = _normalize_grid(grid)
-        if knobs is None and supports_cached_binary_launch() and getattr(self._kernel, "binder", None) is not None:
-            return self._launch_legacy(
-                grid3,
-                args,
-                constexpr_values,
-                option_values,
-                specialization_key,
-            )
+        # Vendor Triton 3.1 can expose knobs while retaining the legacy JIT
+        # cache/binder API. Its first regular launch creates that binder.
+        if not hasattr(self._kernel, "device_caches"):
+            if supports_cached_binary_launch() and getattr(self._kernel, "binder", None) is not None:
+                return self._launch_legacy(
+                    grid3,
+                    args,
+                    constexpr_values,
+                    option_values,
+                    specialization_key,
+                )
+            kwargs = dict(zip(self._constexpr_names, constexpr_values))
+            kwargs.update(zip(self._option_names, option_values))
+            return self._kernel[grid3](*args, **kwargs)
         values = args + constexpr_values
         if not _requires_regular_jit(self._kernel):
             if specialization_key is not None:

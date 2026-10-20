@@ -17,7 +17,14 @@ class McrandError(RuntimeError):
 
 
 class McrandGenerator:
-    def __init__(self, *, seed: int, offset: int = 0, library_path: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        seed: int,
+        offset: int = 0,
+        library_path: str | None = None,
+        rng_type: int = MCRAND_RNG_PSEUDO_PHILOX4_32_10,
+    ) -> None:
         seed_value = int(seed)
         offset_value = int(offset)
         if not 0 <= seed_value <= (1 << 64) - 1:
@@ -29,7 +36,7 @@ class McrandGenerator:
         _check(
             self._lib.mcrandCreateGenerator(
                 ctypes.byref(self._handle),
-                MCRAND_RNG_PSEUDO_PHILOX4_32_10,
+                rng_type,
             ),
             "mcrandCreateGenerator",
         )
@@ -42,13 +49,11 @@ class McrandGenerator:
                 ),
                 "mcrandSetPseudoRandomGeneratorSeed",
             )
-            _check(
-                self._lib.mcrandSetGeneratorOffset(
-                    self._handle,
-                    ctypes.c_ulonglong(offset_value),
-                ),
-                "mcrandSetGeneratorOffset",
-            )
+            if offset_value or rng_type != 141:
+                _check(
+                    self._lib.mcrandSetGeneratorOffset(self._handle, ctypes.c_ulonglong(offset_value)),
+                    "mcrandSetGeneratorOffset",
+                )
         except Exception:
             self.close()
             raise
@@ -59,7 +64,7 @@ class McrandGenerator:
         self._closed = True
         _check(self._lib.mcrandDestroyGenerator(self._handle), "mcrandDestroyGenerator")
 
-    def generate(self, distribution: str, output: torch.Tensor) -> None:
+    def generate(self, distribution: str, output: torch.Tensor, *, lam: float = 10.0) -> None:
         if output.device.type != "cuda" or not output.is_contiguous():
             raise ValueError("mcRAND: output must be a contiguous CUDA-compatible tensor.")
         if output.numel() == 0:
@@ -67,7 +72,10 @@ class McrandGenerator:
         self._set_current_stream()
         ptr = ctypes.c_void_p(output.data_ptr())
         n = ctypes.c_size_t(output.numel())
-        if distribution == "raw32":
+        if distribution == "poisson":
+            status = self._lib.mcrandGeneratePoisson(self._handle, ptr, n, ctypes.c_double(lam))
+            _check(status, "mcrandGeneratePoisson")
+        elif distribution == "raw32":
             _require_dtype(output, torch.int32, distribution)
             status = self._lib.mcrandGenerate(self._handle, ptr, n)
             _check(status, "mcrandGenerate")
@@ -217,6 +225,8 @@ def _bind_signatures(lib: ctypes.CDLL) -> None:
     lib.mcrandSetStream.restype = ctypes.c_int
     lib.mcrandGenerate.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t]
     lib.mcrandGenerate.restype = ctypes.c_int
+    lib.mcrandGeneratePoisson.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_double]
+    lib.mcrandGeneratePoisson.restype = ctypes.c_int
     lib.mcrandGenerateUniform.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t]
     lib.mcrandGenerateUniform.restype = ctypes.c_int
     lib.mcrandGenerateUniformDouble.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t]

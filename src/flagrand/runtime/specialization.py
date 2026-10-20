@@ -62,6 +62,37 @@ def integer_specialization_key(value: int, alignment: int = 16) -> tuple[object,
     return (_integer_signature(value), value == 1, value % alignment == 0)
 
 
+def launch_specialization_key(
+    args: tuple[object, ...],
+    tensor_count: int,
+    constants: tuple[object, ...],
+    options: tuple[object, ...],
+    debug: object,
+    tensor_signatures: tuple[tuple[object, ...], ...] | None = None,
+) -> tuple[object, ...]:
+    """Key a fixed kernel signature with tensor arguments before integer scalars.
+
+    Integer ABI, equality to one and divisibility are retained even when the
+    kernel marks a scalar do_not_specialize. This can split an entry further
+    than the installed binder, without merging distinct specializations.
+    Pointers and the current stream remain runtime launch arguments.
+    A caller may supply signatures for its entire tensor prefix when their
+    dtype/alignment metadata is maintained with the corresponding tensors.
+    """
+    return (
+        driver.active.get_current_device(),
+        (
+            tuple((value.dtype, value.data_ptr() % 16 == 0) for value in args[:tensor_count])
+            if tensor_signatures is None
+            else tensor_signatures
+        ),
+        tuple(integer_specialization_key(value) for value in args[tensor_count:]),
+        constants,
+        options,
+        debug,
+    )
+
+
 def _integer_signature(value: int) -> str:
     if -(1 << 31) <= value < (1 << 31):
         return "i32"

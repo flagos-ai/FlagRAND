@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import math
 import platform
 from datetime import datetime
 from pathlib import Path
@@ -74,12 +75,84 @@ def build_summary(
 
 
 def aggregate_delivery_results(api_results: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    return {
+    result = {
         delivery_name: _aggregate_operator_result(
             delivery_name,
             [(api_name, api_results[api_name]) for api_name in api_names if api_name in api_results],
         )
         for delivery_name, api_names in DELIVERY_OPERATORS
+    }
+    from benchmark.rng_delivery.config import APIS, ENGINES, POISSON_ENGINES
+
+    groups = {engine.upper(): tuple(f"{engine}_{api}" for api in APIS + ("poisson",)) for engine in ENGINES}
+    groups["POISSON"] = tuple(f"{engine}_poisson" for engine in POISSON_ENGINES)
+    for name, operators in groups.items():
+        selected = [(op, api_results[op]) for op in operators if op in api_results]
+        if selected:
+            result[name] = _aggregate_family_result(name, selected, operators)
+    return result
+
+
+def _aggregate_family_result(name, api_results, expected_operators):
+    """Keep arithmetic speedup and add equal-API geometric means explicitly."""
+    accuracy = _aggregate_accuracy([result["accuracy"] for _, result in api_results])
+    data = {}
+    api_means = {}
+    statuses = []
+    complete_shapes = True
+    for operator, result in api_results:
+        performance = result["performance"]
+        statuses.append(performance["status"])
+        complete_shapes = complete_shapes and performance.get("complete_shape_set", True)
+        ratios = []
+        for dtype, item in performance.get("data", {}).items():
+            target = data.setdefault(dtype, {"result": "Unknown", "details": {}, "speedup": 0.0})
+            for shape, point in item["details"].items():
+                target["details"][f"{operator}:{shape}"] = point
+                ratios.append(float(point["speedup"]))
+        api_means[operator] = math.exp(sum(map(math.log, ratios)) / len(ratios)) if ratios else None
+    for item in data.values():
+        ratios = [float(point["speedup"]) for point in item["details"].values()]
+        if ratios:
+            item.update(
+                result="OK",
+                speedup=sum(ratios) / len(ratios),
+                geometric_mean=math.exp(sum(map(math.log, ratios)) / len(ratios)),
+            )
+    complete = (
+        set(api_means) == set(expected_operators)
+        and all(value is not None for value in api_means.values())
+        and complete_shapes
+        and all(status == "Passed" for status in statuses)
+    )
+    overall = math.exp(sum(math.log(value) for value in api_means.values()) / len(api_means)) if complete else None
+    status = (
+        "Failed"
+        if any(s in {"Failed", "Error", "Timeout"} for s in statuses)
+        else (
+            "Skipped"
+            if any(s == "Skipped" for s in statuses)
+            else "Passed" if statuses and all(s == "Passed" for s in statuses) else "NotFound"
+        )
+    )
+    return {
+        "customized": True,
+        "accuracy": accuracy,
+        "performance": {
+            "status": status,
+            "data": data,
+            "test_case": name,
+            "aggregation": "speedup: arithmetic over recorded points; geometric_mean: equal weight per API",
+            "api_geometric_means": api_means,
+            "geometric_mean": overall,
+            "complete_api_family": complete,
+            "expected_apis": list(expected_operators),
+            "observed_apis": list(api_means),
+            "target_geometric_mean": 0.95,
+            "target_scope": "each API geometric mean; Poisson includes all configured lambda-shape pairs",
+            "api_meets_target": {op: value >= 0.95 if value is not None else None for op, value in api_means.items()},
+            "meets_target": all(value >= 0.95 for value in api_means.values()) if complete else None,
+        },
     }
 
 

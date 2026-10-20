@@ -65,8 +65,11 @@ These are sampled input points, not a general performance guarantee.
 The graph benchmark fixes seed/offset; advancing generator state on successive
 graph replays is not implemented or tested by this measurement.
 
-Operator Atlas retains the complete samples, errors, compiler metadata, and
-source hashes. Source branch: `codex/atlas-hygon`, based on upstream `88dd5ce`.
+These historical observations were collected from code based on upstream
+commit `88dd5ce`, with samples, errors, compiler metadata and source hashes
+recorded separately. Obtain the current code from the
+[FlagRAND repository](https://github.com/flagos-ai/FlagRAND) and use the
+delivery procedure below to produce results for that checkout.
 
 ## Complete offline delivery
 

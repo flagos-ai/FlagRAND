@@ -1,5 +1,9 @@
 # FlagRAND 沐曦 MetaX C550 / MACA 运行指南
 
+本文保留 Philox 七接口的历史测试流程和结果口径。四生成器与 Poisson 的本轮镜像、
+安装及测试入口见 [C550 环境与复现](../c550-environment.md)；
+`docker/metax/Dockerfile` 的默认基础镜像已随本轮环境更新。
+
 PPU-ZW810E 请看 [PPU 运行指南](ppu.md)，使用 `benchmark.run_ppu` 和 `benchmark/ppu_matrix/`。
 本文件保留给沐曦 MetaX/MACA 路径，canonical vendor 是 `metax`，Triton target
 backend 是 `maca`，底层矩阵入口是 `benchmark.run_muxi`。从新 `main` 克隆后的容器启动、

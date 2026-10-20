@@ -2,8 +2,10 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-IMAGE="${FLAGRAND_METAX_IMAGE:-flagrand-metax:c550-maca3.7.0.107}"
-BASE_IMAGE="${FLAGRAND_METAX_BASE_IMAGE:-cr.metax-tech.com/public-ai-release/maca/vllm-metax:0.20.0-maca.ai3.7.0.107-torch2.8-py310-ubuntu22.04-amd64}"
+IMAGE="${FLAGRAND_METAX_IMAGE:-flagrand-metax:c550-flagtree0.7.0.post2-metax3.6-py312}"
+BASE_IMAGE="${FLAGRAND_METAX_BASE_IMAGE:-cr.metax-tech.com/public-ai-release/maca/vllm-metax:0.20.2-maca.ai3.7.0.107-torch2.8-py312-ubuntu22.04-pd}"
+FLAGTREE_VERSION="${FLAGRAND_FLAGTREE_VERSION:-0.7.0.post2+metax3.6}"
+FLAGTREE_INDEX_URL="${FLAGRAND_FLAGTREE_INDEX_URL:-https://resource.flagos.net/repository/flagos-pypi-hosted/simple}"
 
 cd "$PROJECT_DIR"
 
@@ -11,6 +13,8 @@ build_args=(
     --network=host
     --platform linux/amd64
     --build-arg "METAX_BASE_IMAGE=$BASE_IMAGE"
+    --build-arg "FLAGTREE_VERSION=$FLAGTREE_VERSION"
+    --build-arg "FLAGTREE_INDEX_URL=$FLAGTREE_INDEX_URL"
     --file docker/metax/Dockerfile
     --tag "$IMAGE"
 )

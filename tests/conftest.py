@@ -18,6 +18,18 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def pytest_configure(config: pytest.Config) -> None:
     config._flagrand_records = {}  # type: ignore[attr-defined]
+    for engine in ("philox", "xorwow", "mrg32k3a", "mtgp32"):
+        for api in (
+            "raw32",
+            "uniform_f32",
+            "uniform_f64",
+            "normal_f32",
+            "normal_f64",
+            "lognormal_f32",
+            "lognormal_f64",
+            "poisson",
+        ):
+            config.addinivalue_line("markers", f"{engine}_{api}: public RNG family API")
 
 
 def _json_value(value: Any) -> Any:
@@ -43,6 +55,8 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]):
     if hasattr(item, "callspec"):
         params = {key: _json_value(value) for key, value in item.callspec.params.items()}
     record = {"result": report.outcome, "params": params}
+    if item.user_properties:
+        record["observations"] = {key: _json_value(value) for key, value in item.user_properties}
     if not report.passed:
         record["reason"] = report.longreprtext
     records[item.nodeid] = record

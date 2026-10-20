@@ -6,11 +6,13 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import math
 import os
 import platform as platform_module
 import subprocess
 import sys
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib import metadata
 from multiprocessing import Process, Queue
@@ -68,6 +70,14 @@ PLATFORM_ALIASES = {
     "ppu": "thead",
     "thead": "thead",
 }
+VISIBLE_DEVICE_VARIABLES = (
+    "CUDA_VISIBLE_DEVICES",
+    "MACA_VISIBLE_DEVICES",
+    "HIP_VISIBLE_DEVICES",
+    "ASCEND_RT_VISIBLE_DEVICES",
+    "NPU_VISIBLE_DEVICES",
+    "ILUVATAR_VISIBLE_DEVICES",
+)
 
 
 @dataclass(frozen=True)
@@ -123,7 +133,10 @@ def get_ops_to_test(
 ) -> list[dict[str, Any]]:
     by_id = {str(operator["id"]): operator for operator in catalog}
     if ops_arg:
-        ids = [item.strip().lstrip("_") for item in ops_arg.split(",") if item.strip()]
+        from benchmark.rng_delivery.config import OPERATOR_GROUPS
+
+        requested = [item.strip().lstrip("_").lower() for item in ops_arg.split(",") if item.strip()]
+        ids = list(dict.fromkeys(operator for name in requested for operator in OPERATOR_GROUPS.get(name, (name,))))
         return [by_id[operator_id] for operator_id in ids]
     if op_list_file:
         ids = [
@@ -178,8 +191,9 @@ def supported_operator_ids(selected_platform: str) -> set[str]:
         return set(ASCEND_910C_SUPPORTED_DISTRIBUTIONS)
     if selected_platform == "metax":
         from benchmark.muxi_matrix.config import ALL_DISTRIBUTIONS
+        from benchmark.rng_delivery.config import OPERATORS
 
-        return set(ALL_DISTRIBUTIONS)
+        return set(ALL_DISTRIBUTIONS) | set(OPERATORS)
     if selected_platform == "iluvatar":
         from benchmark.corex_matrix.config import ALL_DISTRIBUTIONS
 
@@ -189,6 +203,10 @@ def supported_operator_ids(selected_platform: str) -> set[str]:
 
         return set(ALL_DISTRIBUTIONS)
     raise RuntimeError(f"unsupported FlagRAND platform: {selected_platform}")
+
+
+def visible_device_masks(environment: Mapping[str, str]) -> dict[str, str]:
+    return {name: environment[name] for name in VISIBLE_DEVICE_VARIABLES if name in environment}
 
 
 def probe_env(selected_platform: str) -> dict[str, Any]:
@@ -224,6 +242,7 @@ def probe_env(selected_platform: str) -> dict[str, Any]:
         "os_name": os_release["ID"],
         "os_release": os_release["VERSION_ID"],
         "python": platform_module.python_version(),
+        "visible_device_masks": visible_device_masks(os.environ),
         "torch": torch_info,
         "flagtree": flagtree_version,
         "triton": {
@@ -250,6 +269,11 @@ def worker_env(platform: str, gpu_id: int) -> dict[str, str]:
         visible = env.get("HIP_VISIBLE_DEVICES", env.get("CUDA_VISIBLE_DEVICES"))
         selected = visible.split(",")[gpu_id] if visible else device
         env["HIP_VISIBLE_DEVICES"] = selected
+        env["CUDA_VISIBLE_DEVICES"] = selected
+    elif platform == "metax":
+        visible = env.get("MACA_VISIBLE_DEVICES", env.get("CUDA_VISIBLE_DEVICES"))
+        selected = visible.split(",")[gpu_id] if visible else device
+        env["MACA_VISIBLE_DEVICES"] = selected
         env["CUDA_VISIBLE_DEVICES"] = selected
     elif platform == "iluvatar":
         visible = env.get("CUDA_VISIBLE_DEVICES", env.get("ILUVATAR_VISIBLE_DEVICES"))
@@ -350,6 +374,10 @@ def parse_accuracy_data(result_file: Path) -> dict[str, Any]:
 
 
 def _accuracy_test_paths(operator: dict[str, Any], platform: str) -> list[Path]:
+    from benchmark.rng_delivery.config import OPERATORS
+
+    if operator["id"] in OPERATORS:
+        return [ROOT / str(operator["accuracy_test"])]
     if platform == "hygon":
         return [ROOT / str(operator["accuracy_test"]), ROOT / "tests/accuracy/test_philox_hygon.py"]
     if platform == "ascend-cann900":
@@ -425,6 +453,20 @@ def _performance_command(
     raw_dir: Path,
     config: RunnerConfig,
 ) -> list[str]:
+    from benchmark.rng_delivery.config import OPERATORS
+
+    if operator_id in OPERATORS:
+        return [
+            sys.executable,
+            "-m",
+            "benchmark.run_rng_delivery",
+            "--profile",
+            "matrix" if config.profile in {"acceptance", "full", "matrix"} else "smoke",
+            "--distributions",
+            operator_id,
+            "--results-dir",
+            str(raw_dir),
+        ]
     module = os.environ.get("FLAGRAND_PERF_MODULE", PERFORMANCE_MODULES[config.platform])
     profile = config.profile
     benchmark_profile = (
@@ -459,7 +501,6 @@ def _performance_command(
                     "--acceptance-profile",
                     "--acceptance-baseline",
                     "mcrand",
-                    "--strict-acceptance",
                 )
             )
     return command
@@ -517,6 +558,7 @@ def normalise_performance(operator_id: str, records: list[dict[str, Any]]) -> di
                     if candidate.get("backend") != "flagrand_public"
                     and candidate.get("distribution") == operator_id
                     and candidate.get("n") == record.get("n")
+                    and candidate.get("lambda") == record.get("lambda")
                 ),
                 None,
             )
@@ -532,7 +574,10 @@ def normalise_performance(operator_id: str, records: list[dict[str, Any]]) -> di
         base_latency = latency * speedup
         dtype_details.append(
             {
-                "shape_detail": f"({int(record['n'])},)",
+                "shape_detail": (
+                    f"({int(record['n'])},)"
+                    + (f";lambda={record['lambda']:g}" if record.get("lambda") is not None else "")
+                ),
                 "latency_base": base_latency,
                 "latency": latency,
                 "speedup": 0.0 if speedup is None else speedup,
@@ -585,6 +630,16 @@ def parse_performance_data(operator_id: str, result_file: Path) -> dict[str, Any
             "details": details,
             "speedup": sum(speedups) / len(speedups) if speedups else 0.0,
         }
+        from benchmark.rng_delivery.config import OPERATORS
+
+        if operator_id in OPERATORS:
+            geometric = math.exp(sum(map(math.log, speedups)) / len(speedups)) if speedups else None
+            benchmark_data[dtype].update(
+                geometric_mean=geometric,
+                shape_parameter_count=len(speedups),
+                target_geometric_mean=0.95,
+                meets_target=geometric >= 0.95 if geometric is not None else None,
+            )
     return {
         "status": result.title(),
         "data": benchmark_data,
@@ -620,6 +675,19 @@ def run_performance(gpu_id: int, operator: dict[str, Any], config: RunnerConfig)
         "data": {},
     }
     result.update(parse_performance_data(operator_id, result_file))
+    from benchmark.rng_delivery.config import OPERATORS, parameter_values, shapes_for, split_operator
+
+    if operator_id in OPERATORS:
+        profile = "matrix" if config.profile in {"acceptance", "full", "matrix"} else "smoke"
+        api = split_operator(operator_id)[1]
+        expected = len(shapes_for(api, profile)) * len(parameter_values(api))
+        observed = sum(len(item["details"]) for item in result["data"].values())
+        result.update(
+            profile=profile,
+            expected_point_count=expected,
+            observed_point_count=observed,
+            complete_shape_set=observed == expected and result["status"] == "Passed",
+        )
     if code != 0:
         if result["status"] != "Failed":
             result["reason"] = f"benchmark command exited with {code}"
@@ -634,6 +702,10 @@ def _worker(
     config: RunnerConfig,
 ) -> None:
     worker_result = {}
+    device_info = {
+        "logical_worker": gpu_id,
+        "visible_device_masks": visible_device_masks(worker_env(config.platform, gpu_id)),
+    }
     try:
         while True:
             operator = work_queue.get()
@@ -650,6 +722,7 @@ def _worker(
             )
             worker_result[operator_id] = {
                 "customized": True,
+                "device": device_info,
                 "accuracy": accuracy,
                 "performance": performance,
             }
@@ -784,7 +857,16 @@ def main(argv: list[str] | None = None) -> int:
         "total_duration": str(duration).split(".", 1)[0],
         "env": env_info,
         "result": aggregate_delivery_results(result),
+        "profile": config.profile,
     }
+    (config.output_dir / "api_summary.json").write_text(
+        json.dumps(
+            {"timestamp": final_data["timestamp"], "env": env_info, "result": result, "profile": config.profile},
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     summary_path = config.output_dir / "summary.json"
     summary_path.write_text(json.dumps(final_data, indent=2, ensure_ascii=False), encoding="utf-8")
     failed = sum(

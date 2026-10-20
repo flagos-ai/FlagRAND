@@ -7,6 +7,8 @@ __pycache__/
 .coverage
 .venv/
 .cache/
+.cache_metax36/
+.flagtree_cache*/
 .triton_cache/
 .triton_cache*/
 build/

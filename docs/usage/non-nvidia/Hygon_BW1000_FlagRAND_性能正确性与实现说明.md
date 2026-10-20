@@ -95,14 +95,13 @@ launch-time LDS，并出现 `ds_write → s_barrier → ds_read`；256/4 配置�
 配置扫描中，N=16,777,216 的图回放时间从 649.89 μs 降至 305.17 μs。
 此处图回放计时用于解释设备侧变化；第一节的正式加速比始终采用完整 host API 时间。
 
-本次数据对应实现提交 `5fb6caa`，本地分支 `codex/cross-chip-tuning`，
+本次数据对应实现提交 `5fb6caa`，
 验收 run 为 `4abbd70eb84941879227f0c0c428e351`，统一 runner 耗时 `0:10:37`。
-测试节点为 `bm-srwl-nj-zone3-d-bw1000-64g-2-3`，物理 GPU 2。
+测试使用一个 BW1000 节点的物理 GPU 2。
 
-原始交付目录为：
-`/root/operator-platform/vendor/flagrand/hygon_results/ci_4abbd70eb84941879227f0c0c428e351_1789339987`。
-
-本地归档在项目工作区 `reports/flagrand-hygon-baseline-20260914/full/`，
-其中 `acceptance/summary.json` 为统一交付汇总，`analysis.json` 为逐 API/shape 分析，
-`acceptance/<API>/performance_raw/` 保留全部计时样本。
-实现与打包文件的对应关系见同级归档的 `delivery-manifest.json` 和 `source-file-manifest.json`。
+复现代码从 [FlagRAND 公开仓库](https://github.com/flagos-ai/FlagRAND) 获取，
+环境和命令见 [Hygon 运行指南](hygon.md)及
+[硬件验收流程](../../getting-started/hardware-acceptance.md)。
+统一入口在仓库的 `hygon_results/ci_<RUN_ID>/` 下生成 `summary.json`，
+各 API 的 `performance_raw/` 保留计时样本。该历史轮次还保存了逐 API/shape 分析、
+实现与打包文件清单；重新测试的结果应记录自己的源码版本和 run ID，不能直接沿用本文数值。

@@ -4,12 +4,14 @@ import json
 import os
 import sys
 from pathlib import Path
+from queue import SimpleQueue
 
 from tools.run_tests import (
     PLATFORM_ALIASES,
     RunnerConfig,
     _accuracy_test_paths,
     _performance_command,
+    _worker,
     get_ops_from_inventory,
     get_ops_to_test,
     normalise_performance,
@@ -18,6 +20,7 @@ from tools.run_tests import (
     run_accuracy,
     run_performance,
     supported_operator_ids,
+    visible_device_masks,
     worker_env,
 )
 
@@ -66,7 +69,6 @@ def test_acceptance_profile_is_translated_for_each_backend(tmp_path) -> None:
                 "--acceptance-profile",
                 "--acceptance-baseline",
                 "mcrand",
-                "--strict-acceptance",
             },
         ),
         "thead": ("full", {"--skip-torch-reference", "--acceptance-profile"}),
@@ -126,11 +128,43 @@ def test_iluvatar_child_keeps_the_agents_physical_device_mask(monkeypatch) -> No
 
 
 def test_cuda_children_keep_allocated_device_or_uuid_masks(monkeypatch) -> None:
+    monkeypatch.delenv("MACA_VISIBLE_DEVICES", raising=False)
     for platform in ("thead", "metax", "nvidia"):
         for mask in ("1,3", "GPU-first,GPU-second"):
             monkeypatch.setenv("CUDA_VISIBLE_DEVICES", mask)
             for logical, physical in enumerate(mask.split(",")):
                 assert worker_env(platform, logical)["CUDA_VISIBLE_DEVICES"] == physical
+
+
+def test_metax_workers_map_the_allocated_physical_devices(monkeypatch) -> None:
+    monkeypatch.setenv("MACA_VISIBLE_DEVICES", "1,2,3,4")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,2,3")
+    original_masks = visible_device_masks(os.environ)
+    for logical, physical in enumerate(("1", "2", "3", "4")):
+        env = worker_env("metax", logical)
+        assert env["MACA_VISIBLE_DEVICES"] == env["CUDA_VISIBLE_DEVICES"] == physical
+    assert visible_device_masks(os.environ) == original_masks
+    assert original_masks["MACA_VISIBLE_DEVICES"] == "1,2,3,4"
+    assert original_masks["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
+
+
+def test_worker_summary_records_the_api_device_assignment(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("MACA_VISIBLE_DEVICES", "2,6")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
+    phase_result = {"status": "Passed", "duration": 0.0}
+    monkeypatch.setattr("tools.run_tests.run_accuracy", lambda *args: phase_result)
+    monkeypatch.setattr("tools.run_tests.run_performance", lambda *args: phase_result)
+    config = RunnerConfig(tmp_path, "metax", "acceptance", False, 60)
+    for logical, physical in enumerate(("2", "6")):
+        operator_id = ("mtgp32_raw32", "mtgp32_uniform_f64")[logical]
+        work_queue = SimpleQueue()
+        work_queue.put({"id": operator_id})
+        work_queue.put(None)
+        _worker(logical, work_queue, SimpleQueue(), config)
+        result = json.loads((tmp_path / f"summary{logical}.json").read_text())[operator_id]
+        assert result["device"]["logical_worker"] == logical
+        assert result["device"]["visible_device_masks"]["MACA_VISIBLE_DEVICES"] == physical
+        assert result["device"]["visible_device_masks"]["CUDA_VISIBLE_DEVICES"] == physical
 
 
 def test_ascend_child_keeps_the_agents_runtime_mask(monkeypatch) -> None:
@@ -181,8 +215,10 @@ def test_registry_uses_flaggems_maturity_stages() -> None:
         start=None,
     )
 
-    assert [operator["id"] for operator in selected] == [operator["id"] for operator in catalog]
-    assert all(operator["stages"] == [{"stable": "0.1"}] for operator in catalog)
+    assert [operator["id"] for operator in selected] == [
+        operator["id"] for operator in catalog if operator["stages"] == [{"stable": "0.1"}]
+    ]
+    assert len(selected) == 7
 
 
 def test_accuracy_result_is_parsed_like_flaggems(tmp_path) -> None:
@@ -218,7 +254,9 @@ def test_platform_capabilities_come_from_benchmark_configs() -> None:
         "lognormal_f32",
     }
     assert supported_operator_ids("ascend-cann900") == supported_operator_ids("thead")
-    assert supported_operator_ids("metax") == supported_operator_ids("thead")
+    from benchmark.rng_delivery.config import OPERATORS
+
+    assert supported_operator_ids("metax") == supported_operator_ids("thead") | set(OPERATORS)
     assert supported_operator_ids("nvidia") == supported_operator_ids("thead")
 
 

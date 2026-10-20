@@ -1,6 +1,6 @@
 # MetaX C550 · FlagRAND 性能、正确性与实现说明
 
-日期：2026-09-14。最终实测源码提交：`13cc585`，分支：`codex/cross-chip-tuning`。测试为一个 C550 节点的物理 GPU 1，不能据此声称已逐块检验所有 C550。
+日期：2026-09-14。最终实测源码提交：`13cc585`。测试为一个 C550 节点的物理 GPU 1，不能据此声称已逐块检验所有 C550。本文保留该轮 Philox 结果；当前仓库的环境和复现入口见 [C550 环境与复现](../c550-environment.md)，新代码的测试结果单独记录。
 
 ## 第一节：加速比统计
 
@@ -67,4 +67,4 @@ R1 的 N=1025 曾出现 raw32 0.627×、uniform_f32 0.695×。减少计数器值
 
 R2 runtime 报告的 raw kernel n_regs=16/18、shared=0、spills=0 对应进位修正前的策略实验。最终缓存未提供 n_regs/n_spills，未将历史值填作最终值；没有采集到可读 LLVM IR、ISA 反汇编或厂商搬运/计算分项时间。
 
-完整配套证据位于平台工程 `reports/flagrand-metax-baseline-20260914/`：R1 初始基线、R2 策略诊断、R3/R4 失败、R5 最终 summary、每个 shape 的原始样本与编译产物。所有研究轮次经 node agent 在随机时刻启动、计入既有日预算，并沿用节点级让卡、白天预留卡和连续空闲恢复策略。
+该历史轮次保存了 R1 初始基线、R2 策略诊断、R3/R4 失败、R5 最终 summary、每个 shape 的原始样本与编译产物。复现代码从 [FlagRAND 公开仓库](https://github.com/flagos-ai/FlagRAND) 获取；Philox 七接口的命令及统计约定见 [MetaX 运行指南](muxi.md)。重新运行得到的 `summary.json` 和原始计时应与对应源码版本一起保存，本文历史数值不替代新版本结果。

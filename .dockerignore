@@ -10,6 +10,8 @@ __pycache__
 ._*
 .DS_Store
 .cache
+.cache_metax36
+.flagtree_cache*
 .triton_cache*
 ci_logs
 ascend_910c_logs

@@ -1,0 +1,77 @@
+"""Write native records and the existing FlagOS summary hierarchy."""
+
+import csv
+import json
+from datetime import datetime
+
+from benchmark.summary_json import _accuracy_result, aggregate_delivery_results, collect_environment
+
+
+def write_results(directory, manifest, records):
+    from tools.run_tests import normalise_performance, parse_performance_data
+
+    (directory / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    (directory / "records.jsonl").write_text("".join(json.dumps(row) + "\n" for row in records))
+    columns = [
+        "backend",
+        "generator",
+        "distribution",
+        "api",
+        "dtype",
+        "n",
+        "lambda",
+        "status",
+        "total_ms_median",
+        "device_ms_median",
+        "enqueue_us_median",
+        "speedup_vs_mcrand",
+    ]
+    with (directory / "records.csv").open("w", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(records)
+    api_results = {}
+    for operator in manifest["distributions"]:
+        path = directory / f"{operator}.performance.json"
+        path.write_text(json.dumps(normalise_performance(operator, records), indent=2) + "\n")
+        api_results[operator] = {
+            "customized": True,
+            "accuracy": _accuracy_result(
+                [row for row in records if row["backend"] == "flagrand_public" and row["distribution"] == operator]
+            ),
+            "performance": parse_performance_data(operator, path),
+        }
+        expected = len(manifest["shape_map"][operator]) * len(manifest["lambda_map"][operator])
+        performance = api_results[operator]["performance"]
+        observed = sum(len(item["details"]) for item in performance["data"].values())
+        performance.update(
+            profile=manifest["profile"],
+            expected_point_count=expected,
+            observed_point_count=observed,
+            complete_shape_set=observed == expected and performance["status"] == "Passed",
+        )
+    summary = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "env": collect_environment(manifest),
+        "result": aggregate_delivery_results(api_results),
+        "profile": manifest["profile"],
+    }
+    (directory / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    lines = [
+        "# C550 RNG results",
+        "",
+        "Primary timing: total_ms_median; speedup=mcRAND/FlagRAND.",
+        "The existing speedup field is an arithmetic mean; geometric_mean is reported separately.",
+        "",
+        "| API | dtype | Points | Arithmetic mean | Geometric mean | Status |",
+        "|---|---|---:|---:|---:|---|",
+    ]
+    for operator, result in api_results.items():
+        for dtype, data in result["performance"]["data"].items():
+            geometric = data.get("geometric_mean")
+            geometric_text = f"{geometric:.6f}" if geometric is not None else "N/A"
+            lines.append(
+                f"| {operator} | {dtype} | {len(data['details'])} | {data['speedup']:.6f} | "
+                f"{geometric_text} | {result['performance']['status']} |"
+            )
+    (directory / "summary.md").write_text("\n".join(lines) + "\n")

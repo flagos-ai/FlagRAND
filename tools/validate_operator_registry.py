@@ -11,6 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from benchmark.rng_delivery.config import OPERATORS, split_operator  # noqa: E402
 from tools.operator_registry import load_registry  # noqa: E402
 
 LOGGER = logging.getLogger(__name__)
@@ -34,6 +35,17 @@ EXPECTED_OPERATORS = {
     "normal_f64",
     "lognormal_f32",
     "lognormal_f64",
+} | set(OPERATORS)
+
+FAMILY_METHODS = {
+    "raw32": "generate",
+    "uniform_f32": "generate_uniform",
+    "uniform_f64": "generate_uniform_double",
+    "normal_f32": "generate_normal",
+    "normal_f64": "generate_normal_double",
+    "lognormal_f32": "generate_lognormal",
+    "lognormal_f64": "generate_lognormal_double",
+    "poisson": "generate_poisson",
 }
 
 
@@ -57,9 +69,15 @@ def validate_registry(project_root: Path) -> list[str]:
             continue
         operator_id = str(entry["id"])
         ids.append(operator_id)
-        if entry["for"] != [f"flagrand.ops.philox.{operator_id}"]:
+        family = operator_id in OPERATORS
+        expected_path = (
+            f"flagrand.curand.{FAMILY_METHODS[split_operator(operator_id)[1]]}"
+            if family
+            else f"flagrand.ops.philox.{operator_id}"
+        )
+        if entry["for"] != [expected_path]:
             errors.append(f"{operator_id}: public API path does not match its id")
-        if f'"{operator_id}"' not in facade:
+        if not family and f'"{operator_id}"' not in facade:
             errors.append(f"{operator_id}: absent from flagrand.ops.philox.__all__")
         stages = entry["stages"]
         if not isinstance(stages, list) or not stages or not all(isinstance(stage, dict) for stage in stages):
@@ -72,7 +90,7 @@ def validate_registry(project_root: Path) -> list[str]:
                 errors.append(f"{operator_id}: missing {field} file {entry[field]}")
                 continue
             test_source = test_path.read_text(encoding="utf-8")
-            if f"pytest.mark.{operator_id}" not in test_source:
+            if not family and f"pytest.mark.{operator_id}" not in test_source:
                 errors.append(f"{operator_id}: {entry[field]} lacks pytest.mark.{operator_id}")
         platform_accuracy_tests = entry["platform_accuracy_tests"]
         if not isinstance(platform_accuracy_tests, list) or not platform_accuracy_tests:
@@ -84,13 +102,13 @@ def validate_registry(project_root: Path) -> list[str]:
                     errors.append(f"{operator_id}: missing platform accuracy file {test_name}")
                     continue
                 test_source = test_path.read_text(encoding="utf-8")
-                if f"pytest.mark.{operator_id}" not in test_source:
+                if not family and f"pytest.mark.{operator_id}" not in test_source:
                     errors.append(f"{operator_id}: {test_name} lacks pytest.mark.{operator_id}")
 
     if len(ids) != len(set(ids)):
         errors.append("operator ids must be unique")
     if set(ids) != EXPECTED_OPERATORS:
-        errors.append("operator registry must contain exactly the seven public APIs; " f"found={sorted(set(ids))}")
+        errors.append(f"operator registry does not match the public API inventory; found={sorted(set(ids))}")
     return errors
 
 
@@ -104,7 +122,7 @@ def main() -> int:
         for error in errors:
             LOGGER.error("REGISTRY ERROR: %s", error)
         return 1
-    LOGGER.info("Operator registry: PASS (7/7 APIs)")
+    LOGGER.info("Operator registry: PASS (%d APIs)", len(EXPECTED_OPERATORS))
     return 0
 
 

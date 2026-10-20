@@ -104,3 +104,378 @@ ops:
     performance_test: benchmark/test_random_perf.py
     stages:
       - stable: '0.1'
+  - id: xorwow_raw32
+    description: XORWOW public raw32 API.
+    for:
+      - flagrand.curand.generate
+    labels:
+      - random
+      - xorwow
+    kind:
+      - Distribution
+    dtypes: [int32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: xorwow_uniform_f32
+    description: XORWOW public uniform_f32 API.
+    for:
+      - flagrand.curand.generate_uniform
+    labels:
+      - random
+      - xorwow
+    kind:
+      - Distribution
+    dtypes: [float32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: xorwow_uniform_f64
+    description: XORWOW public uniform_f64 API.
+    for:
+      - flagrand.curand.generate_uniform_double
+    labels:
+      - random
+      - xorwow
+    kind:
+      - Distribution
+    dtypes: [float64]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: xorwow_normal_f32
+    description: XORWOW public normal_f32 API.
+    for:
+      - flagrand.curand.generate_normal
+    labels:
+      - random
+      - xorwow
+    kind:
+      - Distribution
+    dtypes: [float32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: xorwow_normal_f64
+    description: XORWOW public normal_f64 API.
+    for:
+      - flagrand.curand.generate_normal_double
+    labels:
+      - random
+      - xorwow
+    kind:
+      - Distribution
+    dtypes: [float64]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: xorwow_lognormal_f32
+    description: XORWOW public lognormal_f32 API.
+    for:
+      - flagrand.curand.generate_lognormal
+    labels:
+      - random
+      - xorwow
+    kind:
+      - Distribution
+    dtypes: [float32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: xorwow_lognormal_f64
+    description: XORWOW public lognormal_f64 API.
+    for:
+      - flagrand.curand.generate_lognormal_double
+    labels:
+      - random
+      - xorwow
+    kind:
+      - Distribution
+    dtypes: [float64]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mrg32k3a_raw32
+    description: MRG32K3A public raw32 API.
+    for:
+      - flagrand.curand.generate
+    labels:
+      - random
+      - mrg32k3a
+    kind:
+      - Distribution
+    dtypes: [int32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mrg32k3a_uniform_f32
+    description: MRG32K3A public uniform_f32 API.
+    for:
+      - flagrand.curand.generate_uniform
+    labels:
+      - random
+      - mrg32k3a
+    kind:
+      - Distribution
+    dtypes: [float32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mrg32k3a_uniform_f64
+    description: MRG32K3A public uniform_f64 API.
+    for:
+      - flagrand.curand.generate_uniform_double
+    labels:
+      - random
+      - mrg32k3a
+    kind:
+      - Distribution
+    dtypes: [float64]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mrg32k3a_normal_f32
+    description: MRG32K3A public normal_f32 API.
+    for:
+      - flagrand.curand.generate_normal
+    labels:
+      - random
+      - mrg32k3a
+    kind:
+      - Distribution
+    dtypes: [float32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mrg32k3a_normal_f64
+    description: MRG32K3A public normal_f64 API.
+    for:
+      - flagrand.curand.generate_normal_double
+    labels:
+      - random
+      - mrg32k3a
+    kind:
+      - Distribution
+    dtypes: [float64]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mrg32k3a_lognormal_f32
+    description: MRG32K3A public lognormal_f32 API.
+    for:
+      - flagrand.curand.generate_lognormal
+    labels:
+      - random
+      - mrg32k3a
+    kind:
+      - Distribution
+    dtypes: [float32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mrg32k3a_lognormal_f64
+    description: MRG32K3A public lognormal_f64 API.
+    for:
+      - flagrand.curand.generate_lognormal_double
+    labels:
+      - random
+      - mrg32k3a
+    kind:
+      - Distribution
+    dtypes: [float64]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mtgp32_raw32
+    description: MTGP32 public raw32 API.
+    for:
+      - flagrand.curand.generate
+    labels:
+      - random
+      - mtgp32
+    kind:
+      - Distribution
+    dtypes: [int32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mtgp32_uniform_f32
+    description: MTGP32 public uniform_f32 API.
+    for:
+      - flagrand.curand.generate_uniform
+    labels:
+      - random
+      - mtgp32
+    kind:
+      - Distribution
+    dtypes: [float32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mtgp32_uniform_f64
+    description: MTGP32 public uniform_f64 API.
+    for:
+      - flagrand.curand.generate_uniform_double
+    labels:
+      - random
+      - mtgp32
+    kind:
+      - Distribution
+    dtypes: [float64]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mtgp32_normal_f32
+    description: MTGP32 public normal_f32 API.
+    for:
+      - flagrand.curand.generate_normal
+    labels:
+      - random
+      - mtgp32
+    kind:
+      - Distribution
+    dtypes: [float32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mtgp32_normal_f64
+    description: MTGP32 public normal_f64 API.
+    for:
+      - flagrand.curand.generate_normal_double
+    labels:
+      - random
+      - mtgp32
+    kind:
+      - Distribution
+    dtypes: [float64]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mtgp32_lognormal_f32
+    description: MTGP32 public lognormal_f32 API.
+    for:
+      - flagrand.curand.generate_lognormal
+    labels:
+      - random
+      - mtgp32
+    kind:
+      - Distribution
+    dtypes: [float32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mtgp32_lognormal_f64
+    description: MTGP32 public lognormal_f64 API.
+    for:
+      - flagrand.curand.generate_lognormal_double
+    labels:
+      - random
+      - mtgp32
+    kind:
+      - Distribution
+    dtypes: [float64]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: philox_poisson
+    description: PHILOX public poisson API.
+    for:
+      - flagrand.curand.generate_poisson
+    labels:
+      - random
+      - philox
+    kind:
+      - Distribution
+    dtypes: [int32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: xorwow_poisson
+    description: XORWOW public poisson API.
+    for:
+      - flagrand.curand.generate_poisson
+    labels:
+      - random
+      - xorwow
+    kind:
+      - Distribution
+    dtypes: [int32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mrg32k3a_poisson
+    description: MRG32K3A public poisson API.
+    for:
+      - flagrand.curand.generate_poisson
+    labels:
+      - random
+      - mrg32k3a
+    kind:
+      - Distribution
+    dtypes: [int32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
+  - id: mtgp32_poisson
+    description: MTGP32 public poisson API.
+    for:
+      - flagrand.curand.generate_poisson
+    labels:
+      - random
+      - mtgp32
+    kind:
+      - Distribution
+    dtypes: [int32]
+    accuracy_test: tests/accuracy/test_rng_families.py
+    platform_accuracy_tests: [tests/accuracy/test_rng_families.py]
+    performance_test: benchmark/run_rng_delivery.py
+    stages:
+      - alpha: '0.2'
