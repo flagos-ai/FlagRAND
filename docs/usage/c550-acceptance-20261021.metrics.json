@@ -1,0 +1,1532 @@
+{
+  "report_date": "2026-10-21",
+  "source_commit": "2e9233d912d7cf3536a583217c668947cb28e3fa",
+  "source_ref": "c550-rng-families-20261021",
+  "scope": "Single fresh-clone run; no historical measurement substitution",
+  "profile": "acceptance",
+  "configured_apis": 32,
+  "configured_points": 1888,
+  "paired_points": 1888,
+  "timed_points": 1888,
+  "complete_run": true,
+  "target": 0.95,
+  "apis_meeting_target": 32,
+  "aggregates": [
+    {
+      "name": "Poisson 四生成器",
+      "expected_apis": 4,
+      "complete_apis": 4,
+      "expected_points": 880,
+      "timed_points": 880,
+      "equal_api_geometric_mean": 1.5889375512551218,
+      "point_geometric_mean": 1.5889375512551218
+    },
+    {
+      "name": "MTGP32 八 API",
+      "expected_apis": 8,
+      "complete_apis": 8,
+      "expected_points": 520,
+      "timed_points": 520,
+      "equal_api_geometric_mean": 1.6142911500529227,
+      "point_geometric_mean": 1.592703979556862
+    }
+  ],
+  "accuracy_execution_counts": {
+    "by_generator": {
+      "philox": {
+        "passed": 181,
+        "failed": 0,
+        "skipped": 8
+      },
+      "xorwow": {
+        "passed": 86,
+        "failed": 0,
+        "skipped": 0
+      },
+      "mrg32k3a": {
+        "passed": 82,
+        "failed": 0,
+        "skipped": 0
+      },
+      "mtgp32": {
+        "passed": 126,
+        "failed": 0,
+        "skipped": 0
+      }
+    },
+    "total": {
+      "passed": 475,
+      "failed": 0,
+      "skipped": 8
+    }
+  },
+  "image": "sha256:b2662f3e02b13c9753399046ebb2b6e2b210f95a2f5bf65fb54fd3ffb4f32a1c",
+  "environment": {
+    "python": "3.12.11",
+    "architecture": "x86_64",
+    "os_name": "ubuntu",
+    "os_release": "22.04",
+    "device_name": "MetaX C550",
+    "packages": {
+      "torch": "2.8.0+metax3.7.0.7",
+      "flagtree": "0.7.0.post2+metax3.6",
+      "triton": "3.6.0",
+      "pytest": "8.4.1",
+      "setuptools": "69.5.1",
+      "wheel": "0.45.1"
+    },
+    "target": {
+      "backend": "maca",
+      "arch": 80,
+      "warp_size": 64
+    },
+    "visible_device_masks": {
+      "CUDA_VISIBLE_DEVICES": "2,3,4,5",
+      "MACA_VISIBLE_DEVICES": "2,3,4,5"
+    },
+    "devices": [
+      {
+        "logical_device": 0,
+        "physical_mask_entry": "2",
+        "uuid": "c14f4d1c-3b3c-95f6-8be9-7fc4d5a4d72a"
+      },
+      {
+        "logical_device": 1,
+        "physical_mask_entry": "3",
+        "uuid": "95922c4e-20bd-fa18-d7a6-142260ef5ee8"
+      },
+      {
+        "logical_device": 2,
+        "physical_mask_entry": "4",
+        "uuid": "3dc37500-e3f6-87c3-6f1d-f7007d2af11d"
+      },
+      {
+        "logical_device": 3,
+        "physical_mask_entry": "5",
+        "uuid": "2181ba05-b9e4-8a56-ab4b-9ee7c30c4eca"
+      }
+    ],
+    "native_library": {
+      "filename": "libmcrand.so",
+      "sha256": "ea9ae25db6b9b90a4b3609ddd4917f7c164946f106a584a9d16c50c8967fe3af",
+      "version": 100000
+    },
+    "runtime_library": {
+      "filename": "libmcruntime.so",
+      "sha256": "941efe5d59db3e34c9fb525fe83702e20437a252c0706a00ff91982a7902a99b",
+      "version": null
+    }
+  },
+  "groups": [
+    {
+      "name": "philox",
+      "physical_gpu": "2",
+      "runner_logical_gpu": 0,
+      "ops": [
+        "raw32",
+        "uniform_f32",
+        "uniform_f64",
+        "normal_f32",
+        "normal_f64",
+        "lognormal_f32",
+        "lognormal_f64",
+        "philox_poisson"
+      ],
+      "runner_exit": 0,
+      "environment": {
+        "python": "3.12.11",
+        "architecture": "x86_64",
+        "os_name": "ubuntu",
+        "os_release": "22.04",
+        "device_name": "MetaX C550",
+        "packages": {
+          "torch": "2.8.0+metax3.7.0.7",
+          "flagtree": "0.7.0.post2+metax3.6",
+          "triton": "3.6.0",
+          "pytest": "8.4.1",
+          "setuptools": "69.5.1",
+          "wheel": "0.45.1"
+        },
+        "target": {
+          "backend": "maca",
+          "arch": 80,
+          "warp_size": 64
+        },
+        "visible_device_masks": {
+          "CUDA_VISIBLE_DEVICES": "2",
+          "MACA_VISIBLE_DEVICES": "2"
+        },
+        "devices": [
+          {
+            "logical_device": 0,
+            "physical_mask_entry": "2",
+            "uuid": "c14f4d1c-3b3c-95f6-8be9-7fc4d5a4d72a"
+          }
+        ],
+        "native_library": {
+          "filename": "libmcrand.so",
+          "sha256": "ea9ae25db6b9b90a4b3609ddd4917f7c164946f106a584a9d16c50c8967fe3af",
+          "version": 100000
+        },
+        "runtime_library": {
+          "filename": "libmcruntime.so",
+          "sha256": "941efe5d59db3e34c9fb525fe83702e20437a252c0706a00ff91982a7902a99b",
+          "version": null
+        }
+      }
+    },
+    {
+      "name": "mtgp32",
+      "physical_gpu": "3",
+      "runner_logical_gpu": 0,
+      "ops": [
+        "mtgp32_raw32",
+        "mtgp32_uniform_f32",
+        "mtgp32_uniform_f64",
+        "mtgp32_normal_f32",
+        "mtgp32_normal_f64",
+        "mtgp32_lognormal_f32",
+        "mtgp32_lognormal_f64",
+        "mtgp32_poisson"
+      ],
+      "runner_exit": 0,
+      "environment": {
+        "python": "3.12.11",
+        "architecture": "x86_64",
+        "os_name": "ubuntu",
+        "os_release": "22.04",
+        "device_name": "MetaX C550",
+        "packages": {
+          "torch": "2.8.0+metax3.7.0.7",
+          "flagtree": "0.7.0.post2+metax3.6",
+          "triton": "3.6.0",
+          "pytest": "8.4.1",
+          "setuptools": "69.5.1",
+          "wheel": "0.45.1"
+        },
+        "target": {
+          "backend": "maca",
+          "arch": 80,
+          "warp_size": 64
+        },
+        "visible_device_masks": {
+          "CUDA_VISIBLE_DEVICES": "3",
+          "MACA_VISIBLE_DEVICES": "3"
+        },
+        "devices": [
+          {
+            "logical_device": 0,
+            "physical_mask_entry": "3",
+            "uuid": "95922c4e-20bd-fa18-d7a6-142260ef5ee8"
+          }
+        ],
+        "native_library": {
+          "filename": "libmcrand.so",
+          "sha256": "ea9ae25db6b9b90a4b3609ddd4917f7c164946f106a584a9d16c50c8967fe3af",
+          "version": 100000
+        },
+        "runtime_library": {
+          "filename": "libmcruntime.so",
+          "sha256": "941efe5d59db3e34c9fb525fe83702e20437a252c0706a00ff91982a7902a99b",
+          "version": null
+        }
+      }
+    },
+    {
+      "name": "xorwow",
+      "physical_gpu": "4",
+      "runner_logical_gpu": 0,
+      "ops": [
+        "xorwow_raw32",
+        "xorwow_uniform_f32",
+        "xorwow_uniform_f64",
+        "xorwow_normal_f32",
+        "xorwow_normal_f64",
+        "xorwow_lognormal_f32",
+        "xorwow_lognormal_f64",
+        "xorwow_poisson"
+      ],
+      "runner_exit": 0,
+      "environment": {
+        "python": "3.12.11",
+        "architecture": "x86_64",
+        "os_name": "ubuntu",
+        "os_release": "22.04",
+        "device_name": "MetaX C550",
+        "packages": {
+          "torch": "2.8.0+metax3.7.0.7",
+          "flagtree": "0.7.0.post2+metax3.6",
+          "triton": "3.6.0",
+          "pytest": "8.4.1",
+          "setuptools": "69.5.1",
+          "wheel": "0.45.1"
+        },
+        "target": {
+          "backend": "maca",
+          "arch": 80,
+          "warp_size": 64
+        },
+        "visible_device_masks": {
+          "CUDA_VISIBLE_DEVICES": "4",
+          "MACA_VISIBLE_DEVICES": "4"
+        },
+        "devices": [
+          {
+            "logical_device": 0,
+            "physical_mask_entry": "4",
+            "uuid": "3dc37500-e3f6-87c3-6f1d-f7007d2af11d"
+          }
+        ],
+        "native_library": {
+          "filename": "libmcrand.so",
+          "sha256": "ea9ae25db6b9b90a4b3609ddd4917f7c164946f106a584a9d16c50c8967fe3af",
+          "version": 100000
+        },
+        "runtime_library": {
+          "filename": "libmcruntime.so",
+          "sha256": "941efe5d59db3e34c9fb525fe83702e20437a252c0706a00ff91982a7902a99b",
+          "version": null
+        }
+      }
+    },
+    {
+      "name": "mrg32k3a",
+      "physical_gpu": "5",
+      "runner_logical_gpu": 0,
+      "ops": [
+        "mrg32k3a_raw32",
+        "mrg32k3a_uniform_f32",
+        "mrg32k3a_uniform_f64",
+        "mrg32k3a_normal_f32",
+        "mrg32k3a_normal_f64",
+        "mrg32k3a_lognormal_f32",
+        "mrg32k3a_lognormal_f64",
+        "mrg32k3a_poisson"
+      ],
+      "runner_exit": 0,
+      "environment": {
+        "python": "3.12.11",
+        "architecture": "x86_64",
+        "os_name": "ubuntu",
+        "os_release": "22.04",
+        "device_name": "MetaX C550",
+        "packages": {
+          "torch": "2.8.0+metax3.7.0.7",
+          "flagtree": "0.7.0.post2+metax3.6",
+          "triton": "3.6.0",
+          "pytest": "8.4.1",
+          "setuptools": "69.5.1",
+          "wheel": "0.45.1"
+        },
+        "target": {
+          "backend": "maca",
+          "arch": 80,
+          "warp_size": 64
+        },
+        "visible_device_masks": {
+          "CUDA_VISIBLE_DEVICES": "5",
+          "MACA_VISIBLE_DEVICES": "5"
+        },
+        "devices": [
+          {
+            "logical_device": 0,
+            "physical_mask_entry": "5",
+            "uuid": "2181ba05-b9e4-8a56-ab4b-9ee7c30c4eca"
+          }
+        ],
+        "native_library": {
+          "filename": "libmcrand.so",
+          "sha256": "ea9ae25db6b9b90a4b3609ddd4917f7c164946f106a584a9d16c50c8967fe3af",
+          "version": 100000
+        },
+        "runtime_library": {
+          "filename": "libmcruntime.so",
+          "sha256": "941efe5d59db3e34c9fb525fe83702e20437a252c0706a00ff91982a7902a99b",
+          "version": null
+        }
+      }
+    }
+  ],
+  "timing": [
+    {
+      "profile": "acceptance_full",
+      "apis": [
+        "raw32",
+        "uniform_f32",
+        "uniform_f64",
+        "normal_f32",
+        "normal_f64",
+        "lognormal_f32",
+        "lognormal_f64"
+      ],
+      "timing": {
+        "warmup": null,
+        "repeats": null,
+        "timing_budget_ms": null
+      }
+    },
+    {
+      "profile": "matrix",
+      "apis": [
+        "philox_poisson",
+        "xorwow_raw32",
+        "xorwow_uniform_f32",
+        "xorwow_uniform_f64",
+        "xorwow_normal_f32",
+        "xorwow_normal_f64",
+        "xorwow_lognormal_f32",
+        "xorwow_lognormal_f64",
+        "xorwow_poisson",
+        "mrg32k3a_raw32",
+        "mrg32k3a_uniform_f32",
+        "mrg32k3a_uniform_f64",
+        "mrg32k3a_normal_f32",
+        "mrg32k3a_normal_f64",
+        "mrg32k3a_lognormal_f32",
+        "mrg32k3a_lognormal_f64",
+        "mrg32k3a_poisson",
+        "mtgp32_raw32",
+        "mtgp32_uniform_f32",
+        "mtgp32_uniform_f64",
+        "mtgp32_normal_f32",
+        "mtgp32_normal_f64",
+        "mtgp32_lognormal_f32",
+        "mtgp32_lognormal_f64",
+        "mtgp32_poisson"
+      ],
+      "timing": {
+        "warmup": 5,
+        "repeats": 11,
+        "timing_budget_ms": 200.0
+      }
+    }
+  ],
+  "reproduction": {
+    "workflow": "本机 clone → checkout 传到 C550 → 新环境 runtest",
+    "clone_on_local_host": true,
+    "checkout_transferred_to_c550": true,
+    "clone_exit_code": 0,
+    "checkout_commit": "2e9233d912d7cf3536a583217c668947cb28e3fa",
+    "test_exit_code": 0,
+    "checkout_archive_sha256": "dbd239948bd6e4a0a5bbdf0e7a28299f5eb186e37281c6c4277f48df2d3afe14",
+    "complete": true,
+    "preceding_setup_attempts": [
+      {
+        "stage": "C550 HTTPS clone",
+        "exit_code": 128,
+        "test_started": false
+      }
+    ]
+  },
+  "summary_format": {
+    "summary.json": {
+      "root_keys": [
+        "timestamp",
+        "total_duration",
+        "env",
+        "result",
+        "profile"
+      ],
+      "result_count": 9
+    },
+    "api_summary.json": {
+      "root_keys": [
+        "timestamp",
+        "env",
+        "result",
+        "profile"
+      ],
+      "result_count": 32
+    }
+  },
+  "apis": [
+    {
+      "generator": "philox",
+      "api": "raw32",
+      "operator": "raw32",
+      "dtype": "int32",
+      "configured_points": 16,
+      "paired_points": 16,
+      "timed_points": 16,
+      "arithmetic_mean": 2.113286398192258,
+      "geometric_mean": 2.0925794763264634,
+      "minimum": 1.7462192240005034,
+      "maximum": 2.5539883283879057,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 42,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 16
+        },
+        "mcrand": {
+          "pass": 16
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "2",
+        "MACA_VISIBLE_DEVICES": "2"
+      }
+    },
+    {
+      "generator": "philox",
+      "api": "uniform_f32",
+      "operator": "uniform_f32",
+      "dtype": "float32",
+      "configured_points": 16,
+      "paired_points": 16,
+      "timed_points": 16,
+      "arithmetic_mean": 2.0075354141565764,
+      "geometric_mean": 1.986950757904564,
+      "minimum": 1.6477494555854535,
+      "maximum": 2.507740680222715,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 24,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 16
+        },
+        "mcrand": {
+          "pass": 16
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "2",
+        "MACA_VISIBLE_DEVICES": "2"
+      }
+    },
+    {
+      "generator": "philox",
+      "api": "uniform_f64",
+      "operator": "uniform_f64",
+      "dtype": "float64",
+      "configured_points": 16,
+      "paired_points": 16,
+      "timed_points": 16,
+      "arithmetic_mean": 1.6163676871276504,
+      "geometric_mean": 1.6032290702262,
+      "minimum": 1.3935453736807581,
+      "maximum": 2.1384378584069106,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 20,
+        "failed": 0,
+        "skipped": 8
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 16
+        },
+        "mcrand": {
+          "pass": 16
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "2",
+        "MACA_VISIBLE_DEVICES": "2"
+      }
+    },
+    {
+      "generator": "philox",
+      "api": "normal_f32",
+      "operator": "normal_f32",
+      "dtype": "float32",
+      "configured_points": 17,
+      "paired_points": 17,
+      "timed_points": 17,
+      "arithmetic_mean": 1.3974381603595698,
+      "geometric_mean": 1.3923804514247706,
+      "minimum": 1.278498850807898,
+      "maximum": 1.679560096554934,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 22,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 17
+        },
+        "mcrand": {
+          "pass": 17
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "2",
+        "MACA_VISIBLE_DEVICES": "2"
+      }
+    },
+    {
+      "generator": "philox",
+      "api": "normal_f64",
+      "operator": "normal_f64",
+      "dtype": "float64",
+      "configured_points": 11,
+      "paired_points": 11,
+      "timed_points": 11,
+      "arithmetic_mean": 1.44869364196044,
+      "geometric_mean": 1.441704108890916,
+      "minimum": 1.0532086194324395,
+      "maximum": 1.5556151148067114,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 11
+        },
+        "mcrand": {
+          "pass": 11
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "2",
+        "MACA_VISIBLE_DEVICES": "2"
+      }
+    },
+    {
+      "generator": "philox",
+      "api": "lognormal_f32",
+      "operator": "lognormal_f32",
+      "dtype": "float32",
+      "configured_points": 17,
+      "paired_points": 17,
+      "timed_points": 17,
+      "arithmetic_mean": 1.8158006181528692,
+      "geometric_mean": 1.805534255247931,
+      "minimum": 1.3588962241077318,
+      "maximum": 2.2209638962138407,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 20,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 17
+        },
+        "mcrand": {
+          "pass": 17
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "2",
+        "MACA_VISIBLE_DEVICES": "2"
+      }
+    },
+    {
+      "generator": "philox",
+      "api": "lognormal_f64",
+      "operator": "lognormal_f64",
+      "dtype": "float64",
+      "configured_points": 15,
+      "paired_points": 15,
+      "timed_points": 15,
+      "arithmetic_mean": 1.4053873489214281,
+      "geometric_mean": 1.3785140347924458,
+      "minimum": 0.8317136162822486,
+      "maximum": 2.016286624175561,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 19,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 15
+        },
+        "mcrand": {
+          "pass": 15
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "2",
+        "MACA_VISIBLE_DEVICES": "2"
+      }
+    },
+    {
+      "generator": "philox",
+      "api": "poisson",
+      "operator": "philox_poisson",
+      "dtype": "int32",
+      "configured_points": 220,
+      "paired_points": 220,
+      "timed_points": 220,
+      "arithmetic_mean": 1.6022881386698802,
+      "geometric_mean": 1.5919634293654232,
+      "minimum": 0.9301241610123429,
+      "maximum": 2.4000914545207666,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 13,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 220
+        },
+        "mcrand": {
+          "pass": 220
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "2",
+        "MACA_VISIBLE_DEVICES": "2"
+      }
+    },
+    {
+      "generator": "xorwow",
+      "api": "raw32",
+      "operator": "xorwow_raw32",
+      "dtype": "int32",
+      "configured_points": 44,
+      "paired_points": 44,
+      "timed_points": 44,
+      "arithmetic_mean": 1.8071125560079728,
+      "geometric_mean": 1.7758095517984047,
+      "minimum": 1.429217970783012,
+      "maximum": 3.089066424149748,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 44
+        },
+        "mcrand": {
+          "pass": 44
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "4",
+        "MACA_VISIBLE_DEVICES": "4"
+      }
+    },
+    {
+      "generator": "xorwow",
+      "api": "uniform_f32",
+      "operator": "xorwow_uniform_f32",
+      "dtype": "float32",
+      "configured_points": 44,
+      "paired_points": 44,
+      "timed_points": 44,
+      "arithmetic_mean": 1.8170174976847777,
+      "geometric_mean": 1.7829776735708998,
+      "minimum": 1.272019981628799,
+      "maximum": 3.1897280375625345,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 44
+        },
+        "mcrand": {
+          "pass": 44
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "4",
+        "MACA_VISIBLE_DEVICES": "4"
+      }
+    },
+    {
+      "generator": "xorwow",
+      "api": "uniform_f64",
+      "operator": "xorwow_uniform_f64",
+      "dtype": "float64",
+      "configured_points": 44,
+      "paired_points": 44,
+      "timed_points": 44,
+      "arithmetic_mean": 1.7267252333528218,
+      "geometric_mean": 1.6721106332734392,
+      "minimum": 0.8434399423459912,
+      "maximum": 3.4650608927581894,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 44
+        },
+        "mcrand": {
+          "pass": 44
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "4",
+        "MACA_VISIBLE_DEVICES": "4"
+      }
+    },
+    {
+      "generator": "xorwow",
+      "api": "normal_f32",
+      "operator": "xorwow_normal_f32",
+      "dtype": "float32",
+      "configured_points": 42,
+      "paired_points": 42,
+      "timed_points": 42,
+      "arithmetic_mean": 1.6875579797411995,
+      "geometric_mean": 1.6229154142507407,
+      "minimum": 0.6351566852839161,
+      "maximum": 3.675994133062892,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 42
+        },
+        "mcrand": {
+          "pass": 42
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "4",
+        "MACA_VISIBLE_DEVICES": "4"
+      }
+    },
+    {
+      "generator": "xorwow",
+      "api": "normal_f64",
+      "operator": "xorwow_normal_f64",
+      "dtype": "float64",
+      "configured_points": 42,
+      "paired_points": 42,
+      "timed_points": 42,
+      "arithmetic_mean": 1.2968944804189093,
+      "geometric_mean": 1.2758968863162312,
+      "minimum": 0.5908202278406004,
+      "maximum": 1.445032051644523,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 42
+        },
+        "mcrand": {
+          "pass": 42
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "4",
+        "MACA_VISIBLE_DEVICES": "4"
+      }
+    },
+    {
+      "generator": "xorwow",
+      "api": "lognormal_f32",
+      "operator": "xorwow_lognormal_f32",
+      "dtype": "float32",
+      "configured_points": 42,
+      "paired_points": 42,
+      "timed_points": 42,
+      "arithmetic_mean": 1.8465264862001345,
+      "geometric_mean": 1.7763923237605852,
+      "minimum": 0.7321461601301225,
+      "maximum": 3.8177873469345784,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 42
+        },
+        "mcrand": {
+          "pass": 42
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "4",
+        "MACA_VISIBLE_DEVICES": "4"
+      }
+    },
+    {
+      "generator": "xorwow",
+      "api": "lognormal_f64",
+      "operator": "xorwow_lognormal_f64",
+      "dtype": "float64",
+      "configured_points": 42,
+      "paired_points": 42,
+      "timed_points": 42,
+      "arithmetic_mean": 1.1222191223179343,
+      "geometric_mean": 1.1013732233734375,
+      "minimum": 0.5140396289550632,
+      "maximum": 1.377317915370086,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 42
+        },
+        "mcrand": {
+          "pass": 42
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "4",
+        "MACA_VISIBLE_DEVICES": "4"
+      }
+    },
+    {
+      "generator": "xorwow",
+      "api": "poisson",
+      "operator": "xorwow_poisson",
+      "dtype": "int32",
+      "configured_points": 220,
+      "paired_points": 220,
+      "timed_points": 220,
+      "arithmetic_mean": 1.7101926171775872,
+      "geometric_mean": 1.687398832633511,
+      "minimum": 0.8556322233541304,
+      "maximum": 2.801072966443329,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 220
+        },
+        "mcrand": {
+          "pass": 220
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "4",
+        "MACA_VISIBLE_DEVICES": "4"
+      }
+    },
+    {
+      "generator": "mrg32k3a",
+      "api": "raw32",
+      "operator": "mrg32k3a_raw32",
+      "dtype": "int32",
+      "configured_points": 44,
+      "paired_points": 44,
+      "timed_points": 44,
+      "arithmetic_mean": 2.686329881044516,
+      "geometric_mean": 2.6171212287395287,
+      "minimum": 0.8795084712760997,
+      "maximum": 4.464544307325559,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 44
+        },
+        "mcrand": {
+          "pass": 44
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "5",
+        "MACA_VISIBLE_DEVICES": "5"
+      }
+    },
+    {
+      "generator": "mrg32k3a",
+      "api": "uniform_f32",
+      "operator": "mrg32k3a_uniform_f32",
+      "dtype": "float32",
+      "configured_points": 44,
+      "paired_points": 44,
+      "timed_points": 44,
+      "arithmetic_mean": 2.275457755503536,
+      "geometric_mean": 2.193437759076969,
+      "minimum": 0.5733280472171491,
+      "maximum": 3.8251365203250485,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 44
+        },
+        "mcrand": {
+          "pass": 44
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "5",
+        "MACA_VISIBLE_DEVICES": "5"
+      }
+    },
+    {
+      "generator": "mrg32k3a",
+      "api": "uniform_f64",
+      "operator": "mrg32k3a_uniform_f64",
+      "dtype": "float64",
+      "configured_points": 44,
+      "paired_points": 44,
+      "timed_points": 44,
+      "arithmetic_mean": 2.432162205766843,
+      "geometric_mean": 2.321182042690097,
+      "minimum": 0.43975037591097677,
+      "maximum": 3.485521107000055,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 44
+        },
+        "mcrand": {
+          "pass": 44
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "5",
+        "MACA_VISIBLE_DEVICES": "5"
+      }
+    },
+    {
+      "generator": "mrg32k3a",
+      "api": "normal_f32",
+      "operator": "mrg32k3a_normal_f32",
+      "dtype": "float32",
+      "configured_points": 42,
+      "paired_points": 42,
+      "timed_points": 42,
+      "arithmetic_mean": 1.5916639057485185,
+      "geometric_mean": 1.559916928515199,
+      "minimum": 0.5600596226540304,
+      "maximum": 1.7965274491473875,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 42
+        },
+        "mcrand": {
+          "pass": 42
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "5",
+        "MACA_VISIBLE_DEVICES": "5"
+      }
+    },
+    {
+      "generator": "mrg32k3a",
+      "api": "normal_f64",
+      "operator": "mrg32k3a_normal_f64",
+      "dtype": "float64",
+      "configured_points": 42,
+      "paired_points": 42,
+      "timed_points": 42,
+      "arithmetic_mean": 1.7535952904823673,
+      "geometric_mean": 1.6889657028709806,
+      "minimum": 0.7044694811261687,
+      "maximum": 1.973896038052797,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 42
+        },
+        "mcrand": {
+          "pass": 42
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "5",
+        "MACA_VISIBLE_DEVICES": "5"
+      }
+    },
+    {
+      "generator": "mrg32k3a",
+      "api": "lognormal_f32",
+      "operator": "mrg32k3a_lognormal_f32",
+      "dtype": "float32",
+      "configured_points": 42,
+      "paired_points": 42,
+      "timed_points": 42,
+      "arithmetic_mean": 1.5806939188172,
+      "geometric_mean": 1.5473815046771977,
+      "minimum": 0.5725579148768146,
+      "maximum": 1.7812225709792566,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 42
+        },
+        "mcrand": {
+          "pass": 42
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "5",
+        "MACA_VISIBLE_DEVICES": "5"
+      }
+    },
+    {
+      "generator": "mrg32k3a",
+      "api": "lognormal_f64",
+      "operator": "mrg32k3a_lognormal_f64",
+      "dtype": "float64",
+      "configured_points": 42,
+      "paired_points": 42,
+      "timed_points": 42,
+      "arithmetic_mean": 1.421027665644966,
+      "geometric_mean": 1.3567004475930855,
+      "minimum": 0.5443775928812126,
+      "maximum": 1.675581756993197,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 42
+        },
+        "mcrand": {
+          "pass": 42
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "5",
+        "MACA_VISIBLE_DEVICES": "5"
+      }
+    },
+    {
+      "generator": "mrg32k3a",
+      "api": "poisson",
+      "operator": "mrg32k3a_poisson",
+      "dtype": "int32",
+      "configured_points": 220,
+      "paired_points": 220,
+      "timed_points": 220,
+      "arithmetic_mean": 1.5715503700438325,
+      "geometric_mean": 1.5325789743812777,
+      "minimum": 0.4629953704718553,
+      "maximum": 2.3222711032205394,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 220
+        },
+        "mcrand": {
+          "pass": 220
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "5",
+        "MACA_VISIBLE_DEVICES": "5"
+      }
+    },
+    {
+      "generator": "mtgp32",
+      "api": "raw32",
+      "operator": "mtgp32_raw32",
+      "dtype": "int32",
+      "configured_points": 44,
+      "paired_points": 44,
+      "timed_points": 44,
+      "arithmetic_mean": 1.9800972480545929,
+      "geometric_mean": 1.9092514395442897,
+      "minimum": 0.8339755781955797,
+      "maximum": 2.402312480931167,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 17,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 44
+        },
+        "mcrand": {
+          "pass": 44
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "3",
+        "MACA_VISIBLE_DEVICES": "3"
+      }
+    },
+    {
+      "generator": "mtgp32",
+      "api": "uniform_f32",
+      "operator": "mtgp32_uniform_f32",
+      "dtype": "float32",
+      "configured_points": 44,
+      "paired_points": 44,
+      "timed_points": 44,
+      "arithmetic_mean": 1.7794459524809432,
+      "geometric_mean": 1.7175792269565968,
+      "minimum": 0.6408542821669408,
+      "maximum": 2.3119888909903343,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 44
+        },
+        "mcrand": {
+          "pass": 44
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "3",
+        "MACA_VISIBLE_DEVICES": "3"
+      }
+    },
+    {
+      "generator": "mtgp32",
+      "api": "uniform_f64",
+      "operator": "mtgp32_uniform_f64",
+      "dtype": "float64",
+      "configured_points": 44,
+      "paired_points": 44,
+      "timed_points": 44,
+      "arithmetic_mean": 1.6747888427975282,
+      "geometric_mean": 1.5900519708262366,
+      "minimum": 0.6164932164283728,
+      "maximum": 2.1824849226437233,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 17,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 44
+        },
+        "mcrand": {
+          "pass": 44
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "3",
+        "MACA_VISIBLE_DEVICES": "3"
+      }
+    },
+    {
+      "generator": "mtgp32",
+      "api": "normal_f32",
+      "operator": "mtgp32_normal_f32",
+      "dtype": "float32",
+      "configured_points": 42,
+      "paired_points": 42,
+      "timed_points": 42,
+      "arithmetic_mean": 1.5529520504121335,
+      "geometric_mean": 1.5011455248360286,
+      "minimum": 0.7349523507213285,
+      "maximum": 2.007409078237505,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 42
+        },
+        "mcrand": {
+          "pass": 42
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "3",
+        "MACA_VISIBLE_DEVICES": "3"
+      }
+    },
+    {
+      "generator": "mtgp32",
+      "api": "normal_f64",
+      "operator": "mtgp32_normal_f64",
+      "dtype": "float64",
+      "configured_points": 42,
+      "paired_points": 42,
+      "timed_points": 42,
+      "arithmetic_mean": 1.6131379915973567,
+      "geometric_mean": 1.5602892630837277,
+      "minimum": 0.829514267794139,
+      "maximum": 2.0141129299957177,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 15,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 42
+        },
+        "mcrand": {
+          "pass": 42
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "3",
+        "MACA_VISIBLE_DEVICES": "3"
+      }
+    },
+    {
+      "generator": "mtgp32",
+      "api": "lognormal_f32",
+      "operator": "mtgp32_lognormal_f32",
+      "dtype": "float32",
+      "configured_points": 42,
+      "paired_points": 42,
+      "timed_points": 42,
+      "arithmetic_mean": 1.5295271750867638,
+      "geometric_mean": 1.4811233728225874,
+      "minimum": 0.7586646735763624,
+      "maximum": 1.9729815007873173,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 42
+        },
+        "mcrand": {
+          "pass": 42
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "3",
+        "MACA_VISIBLE_DEVICES": "3"
+      }
+    },
+    {
+      "generator": "mtgp32",
+      "api": "lognormal_f64",
+      "operator": "mtgp32_lognormal_f64",
+      "dtype": "float64",
+      "configured_points": 42,
+      "paired_points": 42,
+      "timed_points": 42,
+      "arithmetic_mean": 1.705685527502782,
+      "geometric_mean": 1.6466106864198882,
+      "minimum": 0.9037383048636081,
+      "maximum": 2.106059529362478,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 19,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 42
+        },
+        "mcrand": {
+          "pass": 42
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "3",
+        "MACA_VISIBLE_DEVICES": "3"
+      }
+    },
+    {
+      "generator": "mtgp32",
+      "api": "poisson",
+      "operator": "mtgp32_poisson",
+      "dtype": "int32",
+      "configured_points": 220,
+      "paired_points": 220,
+      "timed_points": 220,
+      "arithmetic_mean": 1.613178707432266,
+      "geometric_mean": 1.548294677774015,
+      "minimum": 0.5707461887259087,
+      "maximum": 2.1097127908068267,
+      "target_met": true,
+      "accuracy_status": "Passed",
+      "accuracy_execution_counts": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      "performance_status": "Passed",
+      "benchmark_status_counts": {
+        "flagrand_public": {
+          "pass": 220
+        },
+        "mcrand": {
+          "pass": 220
+        }
+      },
+      "logical_worker": 0,
+      "visible_device_masks": {
+        "CUDA_VISIBLE_DEVICES": "3",
+        "MACA_VISIBLE_DEVICES": "3"
+      }
+    }
+  ]
+}

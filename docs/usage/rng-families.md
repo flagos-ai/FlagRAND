@@ -95,16 +95,15 @@ these are the parameters of the underlying normal variable.
   physical frontier, raw cache and cache start; the state tensor alone is not
   sufficient. An aligned call consumes any remaining cache before using an
   aligned generation path. Explicit launch options retain the existing path.
-  The subsequent r6 implementation sends short MetaX uniform FP64 calls
-  (`N <= 65536`), including fresh aligned calls, through this bounded raw
-  window. For each raw tensor, it lazily converts each offset parity once
+  Short MetaX uniform FP64 calls use the bounded raw path
+  (`N <= 65536`), including fresh aligned calls. For each raw tensor, it lazily converts each offset parity once
   with the existing 53-bit mapping. The two parity arrays retain at most
   `8 * (1048576 + 255)` bytes for the active raw window. Raw words remain
   part of continuation state; these derived FP64 values can be rebuilt.
   Exhausting or replacing the raw cache, or resetting the generator, clears
   the derived references. Stream-ordered allocator reuse can outlive those
   Python references until queued work completes.
-  The r7 integration extends the same short-input path to uniform FP32 at
+  The same short-input path applies to uniform FP32 at
   `N <= 65536`. One FP32 array is derived from the active raw window, retaining
   at most `4 * (1048576 + 255)` bytes. Mixed FP32/FP64 calls therefore retain
   at most `12 * (1048576 + 255) = 12585972` bytes (about 12 MiB) of derived
@@ -141,57 +140,7 @@ these are the parameters of the underlying normal variable.
   generation is not used by this path. The first runtime-library binding and
   first derived conversion are covered by warmup; subsequent refills,
   conversion rebuilds and every copy remain inside full-API timing.
-  The independent r6 run completed all 520 paired points and 111 accuracy
-  executions, including 17 uniform FP64 tests. Its two cache-lifetime seed
-  cases each checked 48 mixed calls and 432 comparisons. All eight MTGP32
-  APIs reached a 0.95 geometric mean; uniform FP64 was 1.546692.
-  This is a separate eight-API run, not a replacement of the r5 snapshot.
-  The r7 production integration was measured separately on physical GPU 6:
-  all 44 uniform FP32 points completed, with a 1.151110 geometric mean and
-  14 accuracy executions passing. Its preceding uniform FP64 marker run
-  passed 17 tests. Each of the 88 paired-side records retains 11 timing
-  samples. The 35 points at `N <= 65536` had a 1.273707 geometric mean;
-  the other nine points were 0.776587 and remain in the full result.
-  The subsequent r8 integration completed all 220 MTGP32 Poisson shape/lambda
-  points on physical GPU 3, retaining 440 paired-side timing records. Its
-  geometric mean against the matching mcRAND API was 1.488941, and its
-  arithmetic mean was 1.558149. All 16 accuracy executions passed, including
-  two new cache-lifetime seed cases with 31 observations and 220 Boolean
-  comparisons each. The geometric means of FlagRAND/mcRAND API times were
-  13.733/20.448 microseconds across all 220 points. The 175 short points were
-  9.918/17.109 microseconds (1.725027), while the other 45 points were
-  48.693/40.905 microseconds (0.840051). All points remain in the result,
-  with 11 timing samples in each raw record.
-  The r9 production integration on physical GPU 3 completed 42 points for
-  each normal/log-normal API, 168 paired points in total. The geometric means
-  were 1.522629 for normal FP32, 1.431151 for normal FP64, 1.024151 for
-  log-normal FP32 and 1.614236 for log-normal FP64. The four API markers
-  passed 14, 15, 14 and 19 accuracy executions respectively: 62 passed,
-  zero failed and zero skipped, with no separate preceding tests. Eight
-  cache-lifetime cases (two seeds per API) completed 352 observations and
-  2984 Boolean comparisons, all true. All 168 points and 336 raw records
-  remain in the result; independent implementation comparisons are separate.
-  These are separate API integrations, not a complete 32-API fresh-clone
-  result. The first published snapshot's fresh-clone run measured uniform
-  FP32 at 0.745122. The later `9554017` snapshot's fresh-clone r2 measured
-  all 220 MTGP32 Poisson points at 0.705456, below the 0.95 target.
-  The subsequent `6150780` snapshot's fresh-clone r3 measured all 42 MTGP32
-  log-normal FP64 points at 0.873118, also below target. The `22ebe335`
-  snapshot's fresh-clone r4 measured all 44 MTGP32 raw32 points at 0.773868.
-  Its relative change also involves lower native-library timing and does
-  not establish a FlagRAND code regression. The new raw cache-hit D2D path
-  completed an independent r10 production run on physical GPU 5 over all
-  44 raw32 points and 88 raw timing records. All 17 accuracy executions
-  passed, with zero failed and zero skipped. Its geometric mean was 1.248531
-  and arithmetic mean was 1.278275. FlagRAND/mcRAND full-API time geometric
-  means were 7.877/10.992 microseconds over the 35 short points (1.395348),
-  and 26.360/21.358 over the remaining nine points (0.810272). The eight
-  points below 0.95 remain in the result. Its preceding control/candidate
-  experiment showed host-API gains while device activity increased; that
-  experiment was not a native-library comparison. The r10 production run
-  covers raw32 alone and does not replace r4 data.
-  The revised source still needs its own complete 32-API run; local repairs
-  do not replace individual APIs inside earlier runs.
+
   With the MetaX FlagTree TLE interface, aligned generation of at least
   1,048,576 raw words uses a persistent 1024-word shared array per state.
   This selection requires four warps and the linear parameter tables. It
@@ -217,27 +166,8 @@ these are the parameters of the underlying normal variable.
   larger calls retain raw generation followed by a separate transform.
   An independent same-device comparison improved the 1M kernel and full API
   time ratio by about 1.20x; the 262K full API had no consistent gain and the
-  16M fused candidate remained slower than the two-stage path. The isolated
-  production integration passed both seed cases with 130 comparisons each;
-  its complete 520-point, eight-API run reached the 0.95 geometric-mean target
-  for five APIs. Uniform FP64, log-normal FP32 and Poisson remained below
-  target. This separate run does not replace parts of the full 32-API result.
-  The later r5 integration adds bounded 32-call prefetch, large cache-only
-  shared refills and the alias-table size limit described above. Four targeted
-  tests passed 372 comparisons, and the SIZE2048 global fallback passed
-  another 18 comparisons. The complete r5 snapshot then measured 1,888
-  points across 32 APIs: 31 reached a 0.95 geometric mean, while MTGP32
-  uniform FP64 remained at 0.702032. Four-engine Poisson was 1.410148 and
-  the equal-API MTGP32 mean was 1.033515; family means do not replace
-  the per-API target. The later r6 cache and runtime-copy implementation
-  completed a separate MTGP32 eight-API run: its equal-API geometric mean
-  was 1.154102, and its all-520-point mean was 1.105374. All eight APIs
-  reached the target, but this source version has no complete 32-API run yet.
-  Relative speedup changes between r5 and r6 include native-library timing
-  changes. For the 35 uniform FP64 points at N <= 65536, the geometric mean
-  of FlagRAND API time changed from 15.274 to 9.327 microseconds, while
-  mcRAND changed from 10.811 to 16.855 microseconds. These temporal results
-  are separate from the controlled same-process implementation comparisons.
+  16M fused candidate remained slower than the two-stage path.
+
   MetaX FP64 log-normal uses the measured degree13 exp polynomial in its
   separate, buffered and small aligned conversion paths. Range reduction,
   binary64 scaling and subnormal/NaN/Inf handling are unchanged. The default
@@ -276,6 +206,12 @@ are consumed per Poisson output; MRG32K3A's smaller residue range is accounted
 for in both bucket selection and thresholds.
 
 ## C550 reproduction and result format
+
+The final source commit `2e9233d912d7cf3536a583217c668947cb28e3fa` completed a fresh clone on the local host, checkout transfer to C550, and a new-container run covering 32 APIs and 1,888 paired points. 32/32 APIs reached a shape geometric mean of 0.95. Accuracy execution counts were 475 passed, 0 failed, and 8 skipped. These counts include executions under separate API markers.
+
+The equal-generator Poisson geometric mean was 1.588938; the equal-API MTGP32 mean was 1.614291. See [the C550 acceptance report](c550-acceptance-20261021.md) for per-API results, shape coverage and timing scope. The historical arithmetic-mean summary fields are preserved.
+
+Independent LLVM, device-trace and full-API comparisons explain the shared-state, two-stage, finite-range math and bounded uniform, normal/lognormal and Poisson-cache optimizations. Short raw32 calls at `N <= 65536`, including fresh aligned calls, also reuse the existing raw window. Cache hits use current-stream D2D copies, while the fused refill-output path is preserved. This adds no derived array; the short-call raw prefetch window uses about 4 MiB separately from derived storage. Poisson keeps only the last table identity and two raw-offset parities. The four normal/lognormal APIs share one recent `_normal_cache` entry keyed by raw storage, mode, dtype, parameter bits and raw-offset residue. Changing that identity replaces the single derived array instead of accumulating parameter entries; the added array uses at most `4 * (1048576 + 255)` bytes, about 4 MiB. All active derived values together retain at most `20 * (1048576 + 255) = 20976620` bytes, about 20 MiB, excluding raw storage, existing alias tables and old storage still retained by pending stream work. Oversized raw windows do not create derived values. Those controlled comparisons remain separate from the final native-library acceptance ratios. Shared-state and two-stage changes are explained with device-kernel timing. Short-call caching reduces repeated host submission and dispatch while performing D2D copies; full-API gains and kernel/memcpy activity are reported separately, rather than attributing host-path savings to a faster kernel. This run used an existing base image and a new container; the repository Dockerfile was not built in this run.
 
 Use the measured MACA image and installation commands in
 [C550 environment and reproduction](c550-environment.md). The formal entry
