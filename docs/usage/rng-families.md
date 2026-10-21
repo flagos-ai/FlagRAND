@@ -104,6 +104,18 @@ these are the parameters of the underlying normal variable.
   tensors, excluding the raw window itself. Both caches are released on raw
   window exhaustion, replacement or seed reset; larger calls keep the
   existing generation path and mapping.
+  Short MetaX Poisson calls with `N <= 65536` also reuse derived values from
+  the bounded raw window. The generator retains only the latest table
+  identity: raw storage, threshold and alias tensors, first value, and table
+  size. At most two int32 arrays represent the two raw-offset parities.
+  Changing the table replaces those arrays instead of keeping a per-lambda
+  map. This adds at most `4 * (1048576 + 255)` bytes. Uniform FP32, uniform
+  FP64 and Poisson together retain at most
+  `16 * (1048576 + 255) = 16781296` bytes (about 16 MiB) of derived tensors,
+  excluding raw storage and the existing alias tables. Oversized raw windows
+  do not create derived values. Raw-window replacement or exhaustion and
+  seed reset clear the derived references; copies and storage lifetime follow
+  the current stream.
   Output copying uses MACA `mcMemcpyAsync` for device-to-device transfer on
   the current stream. FlagRAND still generates the random values; mcRAND
   generation is not used by this path. The first runtime-library binding and
@@ -120,9 +132,22 @@ these are the parameters of the underlying normal variable.
   passed 17 tests. Each of the 88 paired-side records retains 11 timing
   samples. The 35 points at `N <= 65536` had a 1.273707 geometric mean;
   the other nine points were 0.776587 and remain in the full result.
-  This local integration does not establish a complete 32-API fresh-clone
+  The subsequent r8 integration completed all 220 MTGP32 Poisson shape/lambda
+  points on physical GPU 3, retaining 440 paired-side timing records. Its
+  geometric mean against the matching mcRAND API was 1.488941, and its
+  arithmetic mean was 1.558149. All 16 accuracy executions passed, including
+  two new cache-lifetime seed cases with 31 observations and 220 Boolean
+  comparisons each. The geometric means of FlagRAND/mcRAND API times were
+  13.733/20.448 microseconds across all 220 points. The 175 short points were
+  9.918/17.109 microseconds (1.725027), while the other 45 points were
+  48.693/40.905 microseconds (0.840051). All points remain in the result,
+  with 11 timing samples in each raw record.
+  These are separate API integrations, not a complete 32-API fresh-clone
   result. The first published snapshot's fresh-clone run measured uniform
-  FP32 at 0.745122, so the final source commit still needs its own full run.
+  FP32 at 0.745122. The later `9554017` snapshot's fresh-clone r2 measured
+  all 220 MTGP32 Poisson points at 0.705456, below the 0.95 target.
+  The revised source commit still needs its own complete 32-API run; r8
+  does not replace one API inside either earlier run.
   With the MetaX FlagTree TLE interface, aligned generation of at least
   1,048,576 raw words uses a persistent 1024-word shared array per state.
   This selection requires four warps and the linear parameter tables. It
@@ -195,11 +220,13 @@ preserves the preceding raw-then-transform output and final state exactly.
 MRG32K3A uses fusion for up to 262144 outputs; larger calls use
 separate generation and conversion because that path was faster on C550.
 The two paths preserve the same output and continuation state. On MetaX,
-MTGP32 fuses Poisson calls when the call starts and ends on complete 256-word
-updates. Adjacent-word pairs share recurrence loads before applying the alias
-conversion. Other calls use a separate conversion kernel.
-On MetaX, that conversion reads the bounded raw cache directly; refills retain
-the same generator sequence and are included in ordinary host-call timing.
+MTGP32 short calls with `N <= 65536` use the bounded derived-cache path
+above. Outside that path, calls that start and end on complete 256-word
+updates fuse generation and conversion. Adjacent-word pairs share recurrence
+loads before applying the alias conversion. Other calls use a separate
+conversion kernel. That conversion reads the bounded raw cache directly;
+refills retain the same generator sequence and remain inside ordinary
+host-call timing, as do conversion rebuilds and device copies.
 Two raw words
 are consumed per Poisson output; MRG32K3A's smaller residue range is accounted
 for in both bucket selection and thresholds.

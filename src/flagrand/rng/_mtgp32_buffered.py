@@ -29,6 +29,7 @@ PREFETCH_CALLS = 32
 MAX_PREFETCH_WORDS = 1048576
 MAX_UNIFORM32_CACHE_OUTPUTS = 65536
 MAX_UNIFORM64_CACHE_OUTPUTS = 65536
+MAX_POISSON_CACHE_OUTPUTS = 65536
 _native_normal = build_normal_kernel(True)
 _native_normal_finite = build_normal_kernel(True, True)
 
@@ -257,6 +258,7 @@ def raw_window(engine, words, device, output=None, output_mode=-1):
     if remaining < words:
         engine._uniform32_cache = None
         engine._uniform64_cache = None
+        engine._poisson_cache = None
         target = max(words, min(PREFETCH_CALLS * words, MAX_PREFETCH_WORDS))
         blocks = (target - remaining + 255) // 256
         count = remaining + blocks * 256
@@ -356,6 +358,47 @@ def _generate_uniform64_cached(engine, out, n):
     return out
 
 
+def _generate_poisson_cached(engine, out, n, threshold, aliases, first, size):
+    # raw_window may clear the engine reference on the final consuming call.
+    entry = getattr(engine, "_poisson_cache", None)
+    raw, offset, _ = raw_window(engine, 2 * n, out.device)
+    if (
+        entry is None
+        or entry[0] is not raw
+        or entry[1] is not threshold
+        or entry[2] is not aliases
+        or entry[3] != first
+        or entry[4] != size
+    ):
+        # One table identity, at most two parity arrays; no per-lambda map.
+        entry = (raw, threshold, aliases, first, size, {}, engine._buffer_stream)
+    elif entry[6] != engine._buffer_stream:
+        stream = torch.cuda.current_stream(out.device)
+        for values in entry[5].values():
+            values.record_stream(stream)
+        entry = (*entry[:6], engine._buffer_stream)
+    parity = offset & 1
+    values = entry[5].get(parity)
+    if values is None:
+        count = (raw.numel() - parity) // 2
+        values = torch.empty(count, dtype=torch.int32, device=out.device)
+        arguments = (raw, values, threshold, aliases, parity, count)
+        constants, options = (first, size, 256), (4,)
+        key = _buffered_specialization_key(arguments, 4, constants, options, _poisson_transform_kernel.debug)
+        _poisson_transform_launcher.launch(
+            ((count + 255) // 256,), arguments, constants, options, specialization_key=key
+        )
+        entry[5][parity] = values
+    status = device_memcpy_async()(
+        out.data_ptr(), values.data_ptr() + 4 * (offset // 2), n * 4, 3, engine._buffer_stream
+    )
+    if status != 0:
+        raise RuntimeError(f"mcMemcpyAsync returned {status}")
+    if engine._chunk_cache is not None:
+        engine._poisson_cache = entry
+    return out
+
+
 def generate_buffered(
     engine,
     out,
@@ -378,6 +421,10 @@ def generate_buffered(
             if f64:
                 return _generate_uniform64_cached(engine, out, n)
             return _generate_uniform32_cached(engine, out, n)
+    if mode == 4 and n <= MAX_POISSON_CACHE_OUTPUTS:
+        cache = getattr(engine, "_chunk_cache", None)
+        if cache is None or cache.numel() <= MAX_PREFETCH_WORDS + 255:
+            return _generate_poisson_cached(engine, out, n, threshold, aliases, first, size)
     if mode == 0:
         words = n
     elif mode == 1:

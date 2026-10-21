@@ -130,7 +130,10 @@ def generate_poisson(engine, out, lam: float, *, block_size=256, num_warps=None,
         and fused_mtgp32
         and requested_warps is None
         and block_size == 256
-        and engine._uses_raw_buffer(2 * n)
+        and (
+            engine._uses_raw_buffer(2 * n)
+            or (n <= 65536 and getattr(engine, "_use_buffered", True) and getattr(engine, "_buffered_backend", False))
+        )
     ):
         from flagrand.rng._mtgp32_buffered import generate_buffered
 

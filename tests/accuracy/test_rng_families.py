@@ -347,6 +347,116 @@ def test_mtgp32_uniform_cache_lifetime(monkeypatch, record_property, seed, cache
     record_property("cache_continuation", observations)
 
 
+@pytest.mark.mtgp32_poisson
+@pytest.mark.parametrize("seed", [73, 20261020])
+def test_mtgp32_poisson_cache_lifetime(record_property, seed):
+    from flagrand.fused.poisson import _DEVICE_TABLES
+    from flagrand.rng import _mtgp32_buffered as buffered
+
+    reference = curand.create_generator("mtgp32", seed=seed)
+    reference.engine._use_buffered = False
+    candidate = curand.create_generator("mtgp32", seed=seed)
+    observations = []
+
+    def reset(value):
+        for handle in (reference, candidate):
+            curand.set_pseudo_random_generator_seed(handle, value)
+            assert handle.engine._poisson_cache is None
+            assert handle.engine._uniform32_cache is None
+            assert handle.engine._uniform64_cache is None
+
+    def compare(api, n, label, lam=None):
+        previous = candidate.engine._poisson_cache
+        owners = [torch.full((n + 2,), 171, dtype=DTYPES[api], device="cuda") for _ in range(2)]
+        outputs = [owner[1:-1].view(1, n) for owner in owners]
+        invoke(reference, outputs[0], api, lam)
+        invoke(candidate, outputs[1], api, lam)
+        a, b = reference.engine, candidate.engine
+        entry = b._poisson_cache
+        checks = {
+            "output": bool(torch.equal(*outputs)),
+            "guards": all(bool((owner[[0, -1]] == 171).all()) for owner in owners),
+            "offset": a.offset == b.offset,
+            "derived_ownership": entry is None or entry[0] is b._chunk_cache,
+            "derived_bound": entry is None
+            or sum(value.numel() * value.element_size() for value in entry[5].values())
+            <= 4 * (buffered.MAX_PREFETCH_WORDS + 255),
+        }
+        if (
+            api == "poisson"
+            and n <= buffered.MAX_POISSON_CACHE_OUTPUTS
+            and b._chunk_cache is not None
+            and b._chunk_cache.numel() <= buffered.MAX_PREFETCH_WORDS + 255
+        ):
+            threshold, aliases, first = _DEVICE_TABLES[(float(lam), 1 << 32, str(outputs[1].device))]
+            checks["derived_present"] = entry is not None
+            assert entry is not None, {"label": label, "n": n, "lambda": lam}
+            checks["last_table"] = (
+                entry[1] is threshold and entry[2] is aliases and entry[3] == first and entry[4] == threshold.numel()
+            )
+            parity = (b.offset - 2 * n - b._chunk_cache_start) & 1
+            checks["parity"] = parity in entry[5] and set(entry[5]) <= {0, 1}
+            checks["stream"] = entry[6] == b._buffer_stream == torch.cuda.current_stream().cuda_stream
+            if previous is not None and previous[0] is entry[0] and previous[1] is not threshold:
+                checks["table_replaced"] = all(
+                    value is not old for value in entry[5].values() for old in previous[5].values()
+                )
+        observations.append({"api": api, "n": n, "lambda": lam, "label": label, **checks})
+        assert all(checks.values()), observations[-1]
+
+    def exhaust(label):
+        engine = candidate.engine
+        remaining = engine._ws_next_block_start - engine.offset
+        compare("raw32", remaining, label)
+        checks = {
+            "raw_cache_empty": engine._chunk_cache is None,
+            "poisson_cache_empty": engine._poisson_cache is None,
+            "uniform32_cache_empty": engine._uniform32_cache is None,
+            "uniform64_cache_empty": engine._uniform64_cache is None,
+            "frontier": reference.engine._ws_next_block_start == engine._ws_next_block_start,
+            "state": bool(torch.equal(reference.engine.state, engine.state)),
+        }
+        observations.append({"label": label + "_state", **checks})
+        assert all(checks.values()), observations[-1]
+
+    for n, lam in ((128, 0.1), (16384, 1000.0), (65536, 1e6)):
+        reset(seed)
+        compare("poisson", n, "fresh_aligned", lam)
+        assert candidate.engine._ws_next_block_start > candidate.engine.offset
+        exhaust("fresh_aligned_exhaust")
+
+    reset(seed)
+    compare("poisson", 128, "even_parity", 0.1)
+    compare("raw32", 17, "odd_raw_cursor")
+    compare("poisson", 129, "odd_parity", 0.1)
+    assert set(candidate.engine._poisson_cache[5]) == {0, 1}
+    for lam in (1000.0, 1e6, 0.1):
+        compare("poisson", 17, "table_switch", lam)
+    compare("uniform_f32", 129, "mixed_uniform32")
+    compare("uniform_f64", 129, "mixed_uniform64")
+    compare("poisson", 17, "after_uniforms", 1000.0)
+    refills = candidate.engine._buffer_stats["refills"]
+    compare("poisson", 65536, "refill", 1000.0)
+    assert candidate.engine._buffer_stats["refills"] > refills
+    compare("poisson", 65537, "above_output_limit", 0.1)
+    compare("raw32", buffered.MAX_PREFETCH_WORDS + 257, "above_raw_window_limit")
+    compare("poisson", 17, "after_large_raw", 1e6)
+    exhaust("mixed_exhaust")
+
+    compare("poisson", 128, "stream_setup", 1000.0)
+    original, alternate = torch.cuda.current_stream(), torch.cuda.Stream()
+    alternate.wait_stream(original)
+    with torch.cuda.stream(alternate):
+        compare("poisson", 129, "alternate_stream", 1000.0)
+    original.wait_stream(alternate)
+    compare("poisson", 17, "return_stream", 1000.0)
+    reset(seed + 1)
+    compare("poisson", 128, "reset", 0.1)
+    compare("raw32", 17, "raw_after_reset")
+    exhaust("reset_exhaust")
+    record_property("poisson_cache_continuation", observations)
+
+
 @pytest.mark.parametrize(
     "engine", [pytest.param(engine, marks=getattr(pytest.mark, f"{engine}_raw32")) for engine in ENGINES]
 )
