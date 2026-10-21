@@ -109,6 +109,15 @@ class Mtgp32Generator:
 
             return generate_buffered(self, out)
         if (
+            not kwargs
+            and out.numel() <= 65536
+            and getattr(self, "_use_buffered", True)
+            and getattr(self, "_buffered_backend", False)
+        ):
+            from ._mtgp32_buffered import generate_buffered
+
+            return generate_buffered(self, out)
+        if (
             self.offset % MTGP32_BLOCK_SIZE == 0
             and out.numel() % MTGP32_BLOCK_SIZE == 0
             and getattr(self, "_chunk_cache", None) is None

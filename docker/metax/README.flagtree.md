@@ -26,6 +26,16 @@ C550，在新环境中测试。前者的 MTGP32 uniform FP32 为0.745122；后�
 中，MTGP32 Poisson 全220点为0.705456，均未达到0.95，保留各自完整结果。
 后续 `6150780cec626c4aa673ed0ef501d4e13eaeabe7` 的fresh-clone r3中，MTGP32
 lognormal FP64全部42点的几何平均为0.873118，仍未达到0.95。
+`22ebe3352a483efa8150ea20df99948fb2d121c6` 的fresh-clone r4中，MTGP32 raw32全44点
+几何平均为0.773868，低于目标；原生时间变化和FlagRAND代码改动的收益分别解释。
+当前 `N≤65536` 的raw32调用也使用有界raw窗口，包括fresh aligned调用；命中时在当前
+stream执行MACA D2D复制，refill同时写输出的路径保留。短调用raw预取窗口约4 MiB另计；
+此路径不增加派生数组，20 MiB派生存储上界不变。
+该优化减少短调用的主机提交工作，独立候选中设备活动增加，不能视为raw kernel加速。
+独立r10在物理GPU5完成raw32全44点、88条原始计时记录，17项正确性执行全部通过，
+0失败、0跳过。相对同轮mcRAND的几何平均为1.248531，算术平均为1.278275；
+35个短输入点与其余9点的几何平均分别为1.395348、0.810272，8个低于0.95的点全部保留。
+r10只覆盖raw32单项，不替换r4结果，也不拼接其他历史API作为完整验收。
 当前实现将 `N≤65536` 的uniform FP32/FP64、normal/lognormal FP32/FP64及Poisson
 接入同stream D2D派生缓存。Poisson仅保留最近一个表身份与两种raw起点奇偶位置的数组；
 normal/lognormal四API共用一个最近的 `_normal_cache` 条目，按raw窗口、mode、dtype、

@@ -78,6 +78,13 @@ these are the parameters of the underlying normal variable.
   is unsupported, consistent with cuRAND's host MTGP32 restriction.
   Partial MetaX calls prefetch approximately 32 calls' raw-word consumption,
   capped at 1,048,576 words (4 MiB), rounded to complete 256-word updates.
+  Short MetaX raw32 calls at `N <= 65536`, including fresh aligned calls,
+  use this existing raw window. Cache hits copy the requested words through
+  MACA D2D on the current stream; the existing refill path that also writes
+  public raw output remains in use. This adds no derived array and leaves
+  the total derived-storage bound below unchanged. Raw order, consumed
+  offset and mixed-distribution continuation are preserved; explicit kernel
+  options retain the existing path.
   Cache-only refills use a persistent 1024-word shared state ring when at least
   8192 new 256-word blocks are needed. Smaller refills and raw/FP32-uniform
   refills that also write the public output retain the existing global path.
@@ -169,9 +176,22 @@ these are the parameters of the underlying normal variable.
   FP32 at 0.745122. The later `9554017` snapshot's fresh-clone r2 measured
   all 220 MTGP32 Poisson points at 0.705456, below the 0.95 target.
   The subsequent `6150780` snapshot's fresh-clone r3 measured all 42 MTGP32
-  log-normal FP64 points at 0.873118, also below target. The revised source
-  still needs its own complete 32-API run; r8 and r9 do not replace individual
-  APIs inside earlier runs.
+  log-normal FP64 points at 0.873118, also below target. The `22ebe335`
+  snapshot's fresh-clone r4 measured all 44 MTGP32 raw32 points at 0.773868.
+  Its relative change also involves lower native-library timing and does
+  not establish a FlagRAND code regression. The new raw cache-hit D2D path
+  completed an independent r10 production run on physical GPU 5 over all
+  44 raw32 points and 88 raw timing records. All 17 accuracy executions
+  passed, with zero failed and zero skipped. Its geometric mean was 1.248531
+  and arithmetic mean was 1.278275. FlagRAND/mcRAND full-API time geometric
+  means were 7.877/10.992 microseconds over the 35 short points (1.395348),
+  and 26.360/21.358 over the remaining nine points (0.810272). The eight
+  points below 0.95 remain in the result. Its preceding control/candidate
+  experiment showed host-API gains while device activity increased; that
+  experiment was not a native-library comparison. The r10 production run
+  covers raw32 alone and does not replace r4 data.
+  The revised source still needs its own complete 32-API run; local repairs
+  do not replace individual APIs inside earlier runs.
   With the MetaX FlagTree TLE interface, aligned generation of at least
   1,048,576 raw words uses a persistent 1024-word shared array per state.
   This selection requires four warps and the linear parameter tables. It

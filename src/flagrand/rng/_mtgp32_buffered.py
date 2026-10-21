@@ -27,6 +27,7 @@ from ._mtgp32_transforms import _uniform_kernel, build_normal_kernel, exp_finite
 
 PREFETCH_CALLS = 32
 MAX_PREFETCH_WORDS = 1048576
+MAX_RAW_COPY_OUTPUTS = 65536
 MAX_UNIFORM32_CACHE_OUTPUTS = 65536
 MAX_UNIFORM64_CACHE_OUTPUTS = 65536
 MAX_POISSON_CACHE_OUTPUTS = 65536
@@ -477,6 +478,11 @@ def generate_buffered(
     output_mode = mode if mode == 0 or (mode == 1 and not f64) else -1
     raw, raw_offset, output_written = raw_window(engine, words, out.device, out, output_mode)
     if output_written:
+        return out
+    if mode == 0 and n <= MAX_RAW_COPY_OUTPUTS:
+        status = device_memcpy_async()(out.data_ptr(), raw.data_ptr() + raw_offset * 4, n * 4, 3, engine._buffer_stream)
+        if status != 0:
+            raise RuntimeError(f"mcMemcpyAsync returned {status}")
         return out
     if mode == 4:
         arguments = (raw, out, threshold, aliases, raw_offset, n)

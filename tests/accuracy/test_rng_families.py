@@ -659,6 +659,7 @@ def test_raw_scalar_reference_and_state(engine, seed, record_property):
 @pytest.mark.parametrize(
     "first_api, first_n",
     [
+        pytest.param("raw32", 256),
         pytest.param("uniform_f32", 256, marks=pytest.mark.mtgp32_uniform_f32),
         pytest.param("uniform_f64", 128, marks=pytest.mark.mtgp32_uniform_f64),
     ],
@@ -671,7 +672,7 @@ def test_mtgp32_mixed_api_raw_cache_and_state(record_property, first_api, first_
     checks = {}
     for index, (api, n) in enumerate(
         (
-            (first_api, first_n),  # Fresh aligned uniform also uses the bounded cache.
+            (first_api, first_n),  # Fresh aligned raw/uniform also uses the bounded cache.
             ("raw32", 257),
             ("raw32", 255),  # Logical offset is aligned while the new cache is not empty.
             ("raw32", 256),
@@ -688,7 +689,7 @@ def test_mtgp32_mixed_api_raw_cache_and_state(record_property, first_api, first_
     ):
         a, b = (torch.empty(n, dtype=DTYPES[api], device="cuda") for _ in range(2))
         for generator, output in ((reference, a), (candidate, b)):
-            if api == "raw32" and n == 256:
+            if index > 0 and api == "raw32" and n == 256:
                 curand.generate(generator, output, num_warps=4, cached_launch=False)
             else:
                 invoke(generator, output, api, 10.0 if api == "poisson" else None)
