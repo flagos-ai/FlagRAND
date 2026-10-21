@@ -270,24 +270,33 @@ def test_continuation_and_current_stream(operator, record_property):
     assert all(checks.values()), checks
 
 
-@pytest.mark.mtgp32_uniform_f64
+@pytest.mark.parametrize(
+    "cache_api",
+    [
+        pytest.param("uniform_f32", marks=pytest.mark.mtgp32_uniform_f32),
+        pytest.param("uniform_f64", marks=pytest.mark.mtgp32_uniform_f64),
+    ],
+)
 @pytest.mark.parametrize("seed", [73, 20261020])
-def test_mtgp32_uniform64_cache_lifetime(monkeypatch, record_property, seed):
+def test_mtgp32_uniform_cache_lifetime(monkeypatch, record_property, seed, cache_api):
     from flagrand.rng import _mtgp32_buffered as buffered
 
     reference = curand.create_generator("mtgp32", seed=seed)
     candidate = curand.create_generator("mtgp32", seed=seed)
     observations = []
+    bits = 64 if cache_api == "uniform_f64" else 32
+    cache_attribute = f"_uniform{bits}_cache"
 
     def compare(api, n, label):
         owners = [torch.full((n + 2,), 171, dtype=DTYPES[api], device="cuda") for _ in range(2)]
         outputs = [owner[1:-1].view(1, n) for owner in owners]
         with monkeypatch.context() as patch:
-            patch.setattr(buffered, "MAX_UNIFORM64_CACHE_OUTPUTS", 0)
+            patch.setattr(buffered, f"MAX_UNIFORM{bits}_CACHE_OUTPUTS", 0)
             invoke(reference, outputs[0], api, 10.0 if api == "poisson" else None)
         invoke(candidate, outputs[1], api, 10.0 if api == "poisson" else None)
         a, b = reference.engine, candidate.engine
-        entry = getattr(b, "_uniform64_cache", None)
+        entry = getattr(b, cache_attribute, None)
+        values = [] if entry is None else list(entry[1].values()) if bits == 64 else [entry[1]]
         checks = {
             "output": bool(torch.equal(*outputs)),
             "guards": all(bool((owner[[0, -1]] == 171).all()) for owner in owners),
@@ -302,36 +311,38 @@ def test_mtgp32_uniform64_cache_lifetime(monkeypatch, record_property, seed):
             ),
             "derived_ownership": entry is None or entry[0] is b._chunk_cache,
             "derived_bound": entry is None
-            or sum(value.numel() * value.element_size() for value in entry[1].values())
-            <= 8 * (buffered.MAX_PREFETCH_WORDS + 255),
+            or sum(value.numel() * value.element_size() for value in values)
+            <= (bits // 8) * (buffered.MAX_PREFETCH_WORDS + 255),
         }
         observations.append({"api": api, "n": n, "label": label, **checks})
         assert all(checks.values()), observations[-1]
 
     for _ in range(35):
-        compare("uniform_f64", 128, "complete_window_and_refill")
+        compare(cache_api, 128, "complete_window_and_refill")
     for api, n in (
         ("raw32", 17),
-        ("uniform_f64", 129),
-        ("uniform_f64", 65536),
+        (cache_api, 129),
+        (cache_api, 65536),
+        ("uniform_f32" if bits == 64 else "uniform_f64", 129),
         ("normal_f64", 130),
-        ("uniform_f64", 17),
+        (cache_api, 17),
         ("poisson", 129),
-        ("uniform_f64", 65537),
-        ("uniform_f64", 1048577),
-        ("uniform_f64", 17),
+        (cache_api, 65537),
+        (cache_api, 1048577),
+        (cache_api, 17),
     ):
         compare(api, n, "mixed")
     original, alternate = torch.cuda.current_stream(), torch.cuda.Stream()
     alternate.wait_stream(original)
     with torch.cuda.stream(alternate):
-        compare("uniform_f64", 129, "alternate_stream")
+        compare(cache_api, 129, "alternate_stream")
     original.wait_stream(alternate)
     compare("raw32", 17, "return_stream")
     for handle in (reference, candidate):
         curand.set_pseudo_random_generator_seed(handle, seed + 1)
+        assert handle.engine._uniform32_cache is None
         assert handle.engine._uniform64_cache is None
-    compare("uniform_f64", 128, "reset")
+    compare(cache_api, 128, "reset")
     compare("raw32", 17, "raw_after_reset")
     record_property("cache_continuation", observations)
 
@@ -377,8 +388,14 @@ def test_raw_scalar_reference_and_state(engine, seed, record_property):
 
 
 @pytest.mark.mtgp32_raw32
-@pytest.mark.mtgp32_uniform_f64
-def test_mtgp32_mixed_api_raw_cache_and_state(record_property):
+@pytest.mark.parametrize(
+    "first_api, first_n",
+    [
+        pytest.param("uniform_f32", 256, marks=pytest.mark.mtgp32_uniform_f32),
+        pytest.param("uniform_f64", 128, marks=pytest.mark.mtgp32_uniform_f64),
+    ],
+)
+def test_mtgp32_mixed_api_raw_cache_and_state(record_property, first_api, first_n):
     """A prefetched tail survives aligned calls, distribution changes and refill."""
     reference = curand.create_generator("mtgp32", seed=73)
     reference.engine._use_buffered = False
@@ -386,11 +403,13 @@ def test_mtgp32_mixed_api_raw_cache_and_state(record_property):
     checks = {}
     for index, (api, n) in enumerate(
         (
-            ("uniform_f64", 128),  # Fresh aligned uniform also uses the bounded cache.
+            (first_api, first_n),  # Fresh aligned uniform also uses the bounded cache.
             ("raw32", 257),
             ("raw32", 255),  # Logical offset is aligned while the new cache is not empty.
             ("raw32", 256),
             ("uniform_f64", 129),
+            ("uniform_f32", 16384),
+            ("uniform_f32", 17),
             ("normal_f32", 3),
             ("lognormal_f64", 129),
             ("poisson", 257),

@@ -97,6 +97,13 @@ these are the parameters of the underlying normal variable.
   Exhausting or replacing the raw cache, or resetting the generator, clears
   the derived references. Stream-ordered allocator reuse can outlive those
   Python references until queued work completes.
+  The r7 integration extends the same short-input path to uniform FP32 at
+  `N <= 65536`. One FP32 array is derived from the active raw window, retaining
+  at most `4 * (1048576 + 255)` bytes. Mixed FP32/FP64 calls therefore retain
+  at most `12 * (1048576 + 255) = 12585972` bytes (about 12 MiB) of derived
+  tensors, excluding the raw window itself. Both caches are released on raw
+  window exhaustion, replacement or seed reset; larger calls keep the
+  existing generation path and mapping.
   Output copying uses MACA `mcMemcpyAsync` for device-to-device transfer on
   the current stream. FlagRAND still generates the random values; mcRAND
   generation is not used by this path. The first runtime-library binding and
@@ -107,6 +114,15 @@ these are the parameters of the underlying normal variable.
   cases each checked 48 mixed calls and 432 comparisons. All eight MTGP32
   APIs reached a 0.95 geometric mean; uniform FP64 was 1.546692.
   This is a separate eight-API run, not a replacement of the r5 snapshot.
+  The r7 production integration was measured separately on physical GPU 6:
+  all 44 uniform FP32 points completed, with a 1.151110 geometric mean and
+  14 accuracy executions passing. Its preceding uniform FP64 marker run
+  passed 17 tests. Each of the 88 paired-side records retains 11 timing
+  samples. The 35 points at `N <= 65536` had a 1.273707 geometric mean;
+  the other nine points were 0.776587 and remain in the full result.
+  This local integration does not establish a complete 32-API fresh-clone
+  result. The first published snapshot's fresh-clone run measured uniform
+  FP32 at 0.745122, so the final source commit still needs its own full run.
   With the MetaX FlagTree TLE interface, aligned generation of at least
   1,048,576 raw words uses a persistent 1024-word shared array per state.
   This selection requires four warps and the linear parameter tables. It

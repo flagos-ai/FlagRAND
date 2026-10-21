@@ -7,12 +7,12 @@ distribution or dtype does not discard the unused part of a generated block.
 
 Uniform uses one word for f32 and two for f64. Box--Muller uses two/four words
 per pair respectively; an odd final output consumes the complete pair.
-Aligned raw and uniform-f32 calls use direct complete-block generation;
+Aligned raw and larger uniform-f32 calls use direct complete-block generation;
 MetaX uses measured fusion paths for short transformed calls and separate
 transforms for larger calls. Partial MetaX calls retain bounded raw prefetch:
 physical ``state`` can lead logical ``offset``, so restoring a continuation
 requires the raw cache and its positions as well as the state tensor.
-Short MetaX uniform-f64 calls also reuse this bounded raw cache.
+Short MetaX uniform calls reuse this bounded raw cache and derived values.
 Device graph replay of partial-cache operations needs work.
 """
 
@@ -148,7 +148,6 @@ class Mtgp32Generator:
             return generate_buffered(self, out, "uniform")
         if (
             not kwargs
-            and f64
             and n <= 65536
             and getattr(self, "_use_buffered", True)
             and getattr(self, "_buffered_backend", False)

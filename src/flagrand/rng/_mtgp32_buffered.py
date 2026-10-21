@@ -27,6 +27,7 @@ from ._mtgp32_transforms import _uniform_kernel, build_normal_kernel, exp_finite
 
 PREFETCH_CALLS = 32
 MAX_PREFETCH_WORDS = 1048576
+MAX_UNIFORM32_CACHE_OUTPUTS = 65536
 MAX_UNIFORM64_CACHE_OUTPUTS = 65536
 _native_normal = build_normal_kernel(True)
 _native_normal_finite = build_normal_kernel(True, True)
@@ -254,6 +255,7 @@ def raw_window(engine, words, device, output=None, output_mode=-1):
         stats = dict(refills=0, generated_words=0, consumed_words=0, peak_cache_words=0)
         engine._buffer_stats = stats
     if remaining < words:
+        engine._uniform32_cache = None
         engine._uniform64_cache = None
         target = max(words, min(PREFETCH_CALLS * words, MAX_PREFETCH_WORDS))
         blocks = (target - remaining + 255) // 256
@@ -298,6 +300,28 @@ def raw_window(engine, words, device, output=None, output_mode=-1):
     if old_offset + words == cache.numel():
         clear_chunk_cache(engine)
     return cache, old_offset, output_written
+
+
+def _generate_uniform32_cached(engine, out, n):
+    entry = getattr(engine, "_uniform32_cache", None)
+    raw, offset, _ = raw_window(engine, n, out.device)
+    if entry is None or entry[0] is not raw:
+        count = raw.numel()
+        values = torch.empty(count, dtype=torch.float32, device=out.device)
+        arguments = (raw, values, 0, count, 0, 0)
+        constants, options = (1, False, 256, False), (4, False)
+        key = _buffered_specialization_key(arguments, 2, constants, options, _transform_kernel.debug)
+        _transform_launcher.launch(((count + 255) // 256,), arguments, constants, options, specialization_key=key)
+        entry = (raw, values, engine._buffer_stream)
+    elif entry[2] != engine._buffer_stream:
+        entry[1].record_stream(torch.cuda.current_stream(out.device))
+        entry = (raw, entry[1], engine._buffer_stream)
+    status = device_memcpy_async()(out.data_ptr(), entry[1].data_ptr() + offset * 4, n * 4, 3, engine._buffer_stream)
+    if status != 0:
+        raise RuntimeError(f"mcMemcpyAsync returned {status}")
+    if engine._chunk_cache is not None:
+        engine._uniform32_cache = entry
+    return out
 
 
 def _generate_uniform64_cached(engine, out, n):
@@ -347,10 +371,13 @@ def generate_buffered(
     n = out.numel()
     f64 = out.dtype == torch.float64
     mode = {"raw32": 0, "uniform": 1, "normal": 2, "lognormal": 3, "poisson": 4}[distribution]
-    if mode == 1 and f64 and n <= MAX_UNIFORM64_CACHE_OUTPUTS:
+    uniform_limit = MAX_UNIFORM64_CACHE_OUTPUTS if f64 else MAX_UNIFORM32_CACHE_OUTPUTS
+    if mode == 1 and n <= uniform_limit:
         cache = getattr(engine, "_chunk_cache", None)
         if cache is None or cache.numel() <= MAX_PREFETCH_WORDS + 255:
-            return _generate_uniform64_cached(engine, out, n)
+            if f64:
+                return _generate_uniform64_cached(engine, out, n)
+            return _generate_uniform32_cached(engine, out, n)
     if mode == 0:
         words = n
     elif mode == 1:
