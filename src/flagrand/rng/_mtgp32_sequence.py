@@ -20,6 +20,7 @@ def clear_chunk_cache(generator) -> None:
     generator._uniform32_cache = None
     generator._uniform64_cache = None
     generator._poisson_cache = None
+    generator._normal_cache = None
 
 
 def generate_mtgp32_contiguous(

@@ -116,6 +116,19 @@ these are the parameters of the underlying normal variable.
   do not create derived values. Raw-window replacement or exhaustion and
   seed reset clear the derived references; copies and storage lifetime follow
   the current stream.
+  Short MetaX normal and log-normal calls in both precisions also use this
+  path at `N <= 65536`. The four APIs share one recent `_normal_cache` entry:
+  raw tensor, mode, dtype, mean/stddev bits, raw-offset residue, derived values
+  and stream. Each output pair consumes two raw words for FP32 or four for
+  FP64. A change in mode, dtype, parameters or residue replaces the one
+  derived array instead of accumulating parameter entries. Its storage is
+  bounded by `4 * (1048576 + 255)` bytes, about 4 MiB. Together with uniform
+  and Poisson, active derived values retain at most
+  `20 * (1048576 + 255) = 20976620` bytes, about 20 MiB. Raw storage, existing
+  alias tables and old storage retained by pending stream work are separate.
+  Oversized raw windows do not create derived values; raw-window exhaustion,
+  replacement and seed reset clear the references. Stream changes preserve
+  queued storage lifetime and use the caller's explicitly ordered state.
   Output copying uses MACA `mcMemcpyAsync` for device-to-device transfer on
   the current stream. FlagRAND still generates the random values; mcRAND
   generation is not used by this path. The first runtime-library binding and
@@ -142,12 +155,23 @@ these are the parameters of the underlying normal variable.
   9.918/17.109 microseconds (1.725027), while the other 45 points were
   48.693/40.905 microseconds (0.840051). All points remain in the result,
   with 11 timing samples in each raw record.
+  The r9 production integration on physical GPU 3 completed 42 points for
+  each normal/log-normal API, 168 paired points in total. The geometric means
+  were 1.522629 for normal FP32, 1.431151 for normal FP64, 1.024151 for
+  log-normal FP32 and 1.614236 for log-normal FP64. The four API markers
+  passed 14, 15, 14 and 19 accuracy executions respectively: 62 passed,
+  zero failed and zero skipped, with no separate preceding tests. Eight
+  cache-lifetime cases (two seeds per API) completed 352 observations and
+  2984 Boolean comparisons, all true. All 168 points and 336 raw records
+  remain in the result; independent implementation comparisons are separate.
   These are separate API integrations, not a complete 32-API fresh-clone
   result. The first published snapshot's fresh-clone run measured uniform
   FP32 at 0.745122. The later `9554017` snapshot's fresh-clone r2 measured
   all 220 MTGP32 Poisson points at 0.705456, below the 0.95 target.
-  The revised source commit still needs its own complete 32-API run; r8
-  does not replace one API inside either earlier run.
+  The subsequent `6150780` snapshot's fresh-clone r3 measured all 42 MTGP32
+  log-normal FP64 points at 0.873118, also below target. The revised source
+  still needs its own complete 32-API run; r8 and r9 do not replace individual
+  APIs inside earlier runs.
   With the MetaX FlagTree TLE interface, aligned generation of at least
   1,048,576 raw words uses a persistent 1024-word shared array per state.
   This selection requires four warps and the linear parameter tables. It

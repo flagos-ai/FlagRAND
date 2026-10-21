@@ -239,6 +239,15 @@ class Mtgp32Generator:
 
             return generate_buffered(self, out, "lognormal" if lognormal else "normal", mean=mean, stddev=stddev)
         if (
+            not kwargs
+            and n <= 65536
+            and getattr(self, "_use_buffered", True)
+            and getattr(self, "_buffered_backend", False)
+        ):
+            from ._mtgp32_buffered import generate_buffered
+
+            return generate_buffered(self, out, "lognormal" if lognormal else "normal", mean=mean, stddev=stddev)
+        if (
             n <= (65536 if f64 else 1048576)
             and words % 256 == 0
             and self.offset % 256 == 0

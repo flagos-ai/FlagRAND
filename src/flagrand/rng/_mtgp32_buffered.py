@@ -30,6 +30,7 @@ MAX_PREFETCH_WORDS = 1048576
 MAX_UNIFORM32_CACHE_OUTPUTS = 65536
 MAX_UNIFORM64_CACHE_OUTPUTS = 65536
 MAX_POISSON_CACHE_OUTPUTS = 65536
+MAX_NORMAL_CACHE_OUTPUTS = 65536
 _native_normal = build_normal_kernel(True)
 _native_normal_finite = build_normal_kernel(True, True)
 
@@ -259,6 +260,7 @@ def raw_window(engine, words, device, output=None, output_mode=-1):
         engine._uniform32_cache = None
         engine._uniform64_cache = None
         engine._poisson_cache = None
+        engine._normal_cache = None
         target = max(words, min(PREFETCH_CALLS * words, MAX_PREFETCH_WORDS))
         blocks = (target - remaining + 255) // 256
         count = remaining + blocks * 256
@@ -399,6 +401,41 @@ def _generate_poisson_cached(engine, out, n, threshold, aliases, first, size):
     return out
 
 
+def _generate_normal_cached(engine, out, n, mode, f64, mean, stddev):
+    entry = getattr(engine, "_normal_cache", None)
+    words_per_pair = 4 if f64 else 2
+    raw, offset, _ = raw_window(engine, words_per_pair * ((n + 1) // 2), out.device)
+    mu_bits = struct.unpack("<Q" if f64 else "<I", struct.pack("<d" if f64 else "<f", mean))[0]
+    sigma_bits = struct.unpack("<Q" if f64 else "<I", struct.pack("<d" if f64 else "<f", stddev))[0]
+    residue = offset % words_per_pair
+    parameters = (mode, f64, mu_bits, sigma_bits, residue)
+    if entry is None or entry[0] is not raw or entry[1:6] != parameters:
+        # Keep only the most recent distribution, precision and parameters.
+        count = 2 * ((raw.numel() - residue) // words_per_pair)
+        values = torch.empty(count, dtype=out.dtype, device=out.device)
+        arguments = (raw, values, residue, count, mu_bits, sigma_bits)
+        finite_exp = mode == 3 and f64 and exp_finite_range(mean, stddev)
+        constants, options = (mode, f64, 256, finite_exp), (4, False)
+        key = _buffered_specialization_key(arguments, 2, constants, options, _transform_kernel.debug)
+        _transform_launcher.launch(
+            (((count // 2) + 255) // 256,), arguments, constants, options, specialization_key=key
+        )
+        entry = (raw, *parameters, values, engine._buffer_stream)
+    elif entry[7] != engine._buffer_stream:
+        entry[6].record_stream(torch.cuda.current_stream(out.device))
+        entry = (*entry[:7], engine._buffer_stream)
+    output_start = 2 * ((offset - residue) // words_per_pair)
+    element_size = 8 if f64 else 4
+    status = device_memcpy_async()(
+        out.data_ptr(), entry[6].data_ptr() + element_size * output_start, n * element_size, 3, engine._buffer_stream
+    )
+    if status != 0:
+        raise RuntimeError(f"mcMemcpyAsync returned {status}")
+    if engine._chunk_cache is not None:
+        engine._normal_cache = entry
+    return out
+
+
 def generate_buffered(
     engine,
     out,
@@ -425,6 +462,10 @@ def generate_buffered(
         cache = getattr(engine, "_chunk_cache", None)
         if cache is None or cache.numel() <= MAX_PREFETCH_WORDS + 255:
             return _generate_poisson_cached(engine, out, n, threshold, aliases, first, size)
+    if mode in (2, 3) and n <= MAX_NORMAL_CACHE_OUTPUTS:
+        cache = getattr(engine, "_chunk_cache", None)
+        if cache is None or cache.numel() <= MAX_PREFETCH_WORDS + 255:
+            return _generate_normal_cached(engine, out, n, mode, f64, mean, stddev)
     if mode == 0:
         words = n
     elif mode == 1:

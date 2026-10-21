@@ -458,6 +458,164 @@ def test_mtgp32_poisson_cache_lifetime(record_property, seed):
 
 
 @pytest.mark.parametrize(
+    "cache_api",
+    [
+        pytest.param("normal_f32", marks=pytest.mark.mtgp32_normal_f32),
+        pytest.param("normal_f64", marks=pytest.mark.mtgp32_normal_f64),
+        pytest.param("lognormal_f32", marks=pytest.mark.mtgp32_lognormal_f32),
+        pytest.param("lognormal_f64", marks=pytest.mark.mtgp32_lognormal_f64),
+    ],
+)
+@pytest.mark.parametrize("seed", [73, 20261020])
+def test_mtgp32_normal_cache_lifetime(record_property, seed, cache_api):
+    from flagrand.rng import _mtgp32_buffered as buffered
+
+    reference = curand.create_generator("mtgp32", seed=seed)
+    reference.engine._use_buffered = False
+    candidate = curand.create_generator("mtgp32", seed=seed)
+    observations = []
+    residues = set()
+    words_per_pair = 4 if cache_api.endswith("f64") else 2
+    aligned_n = 128 if words_per_pair == 4 else 256
+    methods = {
+        "normal_f32": curand.generate_normal,
+        "normal_f64": curand.generate_normal_double,
+        "lognormal_f32": curand.generate_lognormal,
+        "lognormal_f64": curand.generate_lognormal_double,
+    }
+
+    def reset(value):
+        for handle in (reference, candidate):
+            curand.set_pseudo_random_generator_seed(handle, value)
+            assert handle.engine._normal_cache is None
+            assert handle.engine._poisson_cache is None
+            assert handle.engine._uniform32_cache is None
+            assert handle.engine._uniform64_cache is None
+
+    def compare(api, n, label, *, mean=0.0, stddev=1.0, lam=None):
+        previous = candidate.engine._normal_cache
+        owners = [torch.full((n + 2,), 171, dtype=DTYPES[api], device="cuda") for _ in range(2)]
+        outputs = [owner[1:-1].view(1, n) for owner in owners]
+        for handle, output in zip((reference, candidate), outputs):
+            if api in methods:
+                # MTGP32 accepts odd public outputs and consumes the final complete pair.
+                methods[api](handle, output, mean=mean, stddev=stddev)
+            else:
+                invoke(handle, output, api, lam)
+        a, b = reference.engine, candidate.engine
+        entry = b._normal_cache
+        checks = {
+            "output": bool(torch.equal(*outputs)),
+            "guards": all(bool((owner[[0, -1]] == 171).all()) for owner in owners),
+            "offset": a.offset == b.offset,
+            "derived_ownership": entry is None or entry[0] is b._chunk_cache,
+            "derived_dtype": entry is None or entry[6].dtype == (torch.float64 if entry[2] else torch.float32),
+            "derived_bound": entry is None
+            or entry[6].numel() * entry[6].element_size() <= 4 * (buffered.MAX_PREFETCH_WORDS + 255),
+        }
+        if (
+            api in methods
+            and n <= buffered.MAX_NORMAL_CACHE_OUTPUTS
+            and b._chunk_cache is not None
+            and b._chunk_cache.numel() <= buffered.MAX_PREFETCH_WORDS + 255
+        ):
+            checks["derived_present"] = entry is not None
+            assert entry is not None, {"label": label, "api": api, "n": n, "mean": mean, "stddev": stddev}
+            mode, f64 = 3 if api.startswith("lognormal") else 2, api.endswith("f64")
+            float_format, word_format = ("<d", "<Q") if f64 else ("<f", "<I")
+            mu_bits, sigma_bits = (
+                struct.unpack(word_format, struct.pack(float_format, value))[0] for value in (mean, stddev)
+            )
+            pair_words = 4 if f64 else 2
+            words = pair_words * ((n + 1) // 2)
+            residue = (b.offset - words - b._chunk_cache_start) % pair_words
+            if api == cache_api:
+                residues.add(residue)
+            checks["latest_mode_dtype_parameters_residue"] = entry[1:6] == (mode, f64, mu_bits, sigma_bits, residue)
+            checks["single_array"] = isinstance(entry, tuple) and len(entry) == 8 and isinstance(entry[6], torch.Tensor)
+            checks["stream"] = entry[7] == b._buffer_stream == torch.cuda.current_stream().cuda_stream
+            if previous is not None and previous[0] is entry[0]:
+                checks["reuse_or_replace"] = (
+                    entry[6] is previous[6] if previous[1:6] == entry[1:6] else entry[6] is not previous[6]
+                )
+        observations.append(
+            {"api": api, "n": n, "mean": mean, "stddev": stddev, "lambda": lam, "label": label, **checks}
+        )
+        assert all(checks.values()), observations[-1]
+
+    def exhaust(label):
+        engine = candidate.engine
+        remaining = engine._ws_next_block_start - engine.offset
+        compare("raw32", remaining, label)
+        checks = {
+            "raw_cache_empty": engine._chunk_cache is None,
+            "normal_cache_empty": engine._normal_cache is None,
+            "poisson_cache_empty": engine._poisson_cache is None,
+            "uniform32_cache_empty": engine._uniform32_cache is None,
+            "uniform64_cache_empty": engine._uniform64_cache is None,
+            "frontier": reference.engine._ws_next_block_start == engine._ws_next_block_start,
+            "state": bool(torch.equal(reference.engine.state, engine.state)),
+        }
+        observations.append({"label": label + "_state", **checks})
+        assert all(checks.values()), observations[-1]
+
+    for n in (aligned_n, 16384, 65536):
+        reset(seed)
+        compare(cache_api, n, "fresh_aligned")
+        assert candidate.engine._ws_next_block_start > candidate.engine.offset
+        exhaust("fresh_aligned_exhaust")
+
+    reset(seed)
+    compare(cache_api, aligned_n, "residue_0")
+    for residue, n in zip(range(1, words_per_pair), (129, 17, 130)):
+        compare("raw32", 17, "advance_raw_residue")
+        compare(cache_api, n, f"residue_{residue}")
+        assert candidate.engine._normal_cache[5] == residue
+    assert residues == set(range(words_per_pair))
+    compare(cache_api, 17, "reuse_same_parameters")
+    for mean, stddev in ((-0.25, 1.5), (1.0, 0.5), (0.0, 0.0), (-0.0, 1.0), (0.0, 1.0)):
+        compare(cache_api, 17, "parameter_switch", mean=mean, stddev=stddev)
+    # Successive dtype and mode changes must replace the one shared entry.
+    for api in ("normal_f32", "normal_f64", "lognormal_f64", "lognormal_f32"):
+        compare(api, 17, "mode_dtype_switch")
+    for api, n, lam in (
+        ("uniform_f32", 129, None),
+        ("uniform_f64", 129, None),
+        ("raw32", 17, None),
+        ("poisson", 129, 1000.0),
+    ):
+        compare(api, n, "mixed_distribution", lam=lam)
+    compare(cache_api, 129, "after_mixed_distributions", mean=-0.25, stddev=1.5)
+    refills = candidate.engine._buffer_stats["refills"]
+    compare(cache_api, 65536, "refill")
+    assert candidate.engine._buffer_stats["refills"] > refills
+    compare(cache_api, 65537, "above_output_limit")
+
+    # Leave 128 raw words after an oversized refill so the next short call must
+    # consume that same large window rather than replacing it with a new one.
+    large_n = buffered.MAX_PREFETCH_WORDS + 512 + (128 - candidate.engine.offset) % 256
+    compare("raw32", large_n, "above_raw_window_limit")
+    assert candidate.engine._chunk_cache.numel() > buffered.MAX_PREFETCH_WORDS + 255
+    compare(cache_api, 17, "after_large_raw")
+    assert candidate.engine._normal_cache is None
+    exhaust("mixed_exhaust")
+
+    compare(cache_api, aligned_n, "stream_setup")
+    original, alternate = torch.cuda.current_stream(), torch.cuda.Stream()
+    alternate.wait_stream(original)
+    with torch.cuda.stream(alternate):
+        compare(cache_api, 129, "alternate_stream")
+    original.wait_stream(alternate)
+    compare(cache_api, 17, "return_stream")
+    exhaust("stream_exhaust")
+    reset(seed + 1)
+    compare(cache_api, aligned_n, "reset")
+    compare("raw32", 17, "raw_after_reset")
+    exhaust("reset_exhaust")
+    record_property("normal_cache_continuation", observations)
+
+
+@pytest.mark.parametrize(
     "engine", [pytest.param(engine, marks=getattr(pytest.mark, f"{engine}_raw32")) for engine in ENGINES]
 )
 @pytest.mark.parametrize("seed", [73, 20261020])
