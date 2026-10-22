@@ -25,7 +25,7 @@ if str(ROOT) not in sys.path:
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
-from benchmark.summary_json import aggregate_delivery_results  # noqa: E402
+from benchmark.summary_json import aggregate_delivery_results, build_performance_statistics  # noqa: E402
 from tools.operator_registry import load_registry  # noqa: E402
 
 TIMEOUT = -100
@@ -869,6 +869,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     summary_path = config.output_dir / "summary.json"
     summary_path.write_text(json.dumps(final_data, indent=2, ensure_ascii=False), encoding="utf-8")
+    (config.output_dir / "performance_statistics.json").write_text(
+        json.dumps(
+            {
+                "timestamp": final_data["timestamp"],
+                "profile": config.profile,
+                "result": build_performance_statistics(result),
+            },
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     failed = sum(
         phase.get("status") in {"Failed", "Error", "Timeout", "NotFound"}
         for operator_result in result.values()

@@ -82,8 +82,45 @@ def aggregate_delivery_results(api_results: dict[str, dict[str, Any]]) -> dict[s
         )
         for delivery_name, api_names in DELIVERY_OPERATORS
     }
+    for name, family in _aggregate_families(api_results).items():
+        performance = family["performance"]
+        result[name] = {
+            "customized": family["customized"],
+            "accuracy": family["accuracy"],
+            "performance": {
+                "status": performance["status"],
+                "data": {
+                    dtype: {key: item[key] for key in ("result", "details", "speedup")}
+                    for dtype, item in performance["data"].items()
+                },
+                "test_case": performance["test_case"],
+            },
+        }
+    return result
+
+
+def build_performance_statistics(api_results: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Keep API geometric means and family statistics alongside the Philox-format summary."""
+    result = {}
+    for name, family in _aggregate_families(api_results).items():
+        performance = family["performance"]
+        result[name] = {
+            key: value for key, value in performance.items() if key not in {"status", "data", "test_case"}
+        }
+        result[name]["dtypes"] = {
+            dtype: {
+                "geometric_mean": item.get("geometric_mean"),
+                "shape_parameter_count": len(item["details"]),
+            }
+            for dtype, item in performance["data"].items()
+        }
+    return result
+
+
+def _aggregate_families(api_results: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
     from benchmark.rng_delivery.config import APIS, ENGINES, POISSON_ENGINES
 
+    result = {}
     groups = {engine.upper(): tuple(f"{engine}_{api}" for api in APIS + ("poisson",)) for engine in ENGINES}
     groups["POISSON"] = tuple(f"{engine}_poisson" for engine in POISSON_ENGINES)
     for name, operators in groups.items():

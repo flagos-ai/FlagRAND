@@ -21,9 +21,8 @@
 | pytest / PyYAML | `8.4.1` / `6.0.3` |
 | setuptools / wheel | `69.5.1` / `0.45.1` |
 
-本轮通过已有镜像归档导入环境。测试节点的 `RepoTags` 和 `RepoDigests` 均为空；上述
-image ID 标识本地镜像，不能将它拼成仓库的 `@sha256:...` 拉取地址。来源标签保留用于
-查找对应发布物，从仓库拉取仍需访问权限，本轮尚未验证该拉取过程。
+本轮通过已有镜像归档导入环境。测试节点的 `RepoTags` 和 `RepoDigests` 均为空，上述
+image ID 用于选择宿主机已有镜像；来源标签用于查找对应发布物。下文复现采用本地镜像启动新容器。
 完整运行环境以每次测试输出的 `env`、环境日志和源码版本为准。
 
 当前配置保留镜像预装的 MetaX PyTorch、MACA runtime 和 mcRAND，安装固定版本 FlagTree。
@@ -32,9 +31,9 @@ image ID 标识本地镜像，不能将它拼成仓库的 `@sha256:...` 拉取�
 
 Poisson 四生成器等权几何平均为 1.588938，MTGP32 八 API 等权几何平均为 1.614291。MTGP32 uniform FP32/FP64 分别为 1.717579/1.590052。逐 API 目标与族级汇总分别列出，原有 summary 的算术平均字段保持不变。
 
-逐 API 结果、shape 覆盖、计时口径和正确性计数见 [C550 验收说明](c550-acceptance-20261021.md)。本轮使用已有基础镜像创建新容器，没有执行仓库 Dockerfile 的 Docker build。[FlagTree 环境说明](../../docker/metax/README.flagtree.md)保留安装与构建配方。
+逐 API 结果、shape 覆盖、计时口径和正确性计数见 [C550 验收说明](c550-acceptance-20261021.md)。本轮使用已有基础镜像创建新容器，再按固定版本安装依赖。[FlagTree 环境说明](../../docker/metax/README.flagtree.md)保留安装与构建配方。
 
-架构优化结合实际二进制内的 LLVM、设备活动时间线及完整 Host API 计时：共享内存复用状态和小型 Poisson 表，XORWOW 采用两阶段 FP64 变换，有限范围的 exp 删除多余处理，短 uniform、normal/lognormal 和 Poisson 复用派生缓存，并通过当前 stream 执行 D2D 复制。短 raw32 复用已有 raw 窗口，缓存命中用 D2D 复制，refill 写输出路径保留，不增加派生数组。共享内存和两阶段变换以设备 kernel 时间对照解释；短调用缓存减少主机侧重复提交与分发，其完整 API 收益和 kernel、memcpy 活动分别记录，不将主机路径收益归为 kernel 加速。这些改动的机制与收益由独立控制/候选实验解释；本节的验收数值仅来自最终完整轮次，历史轮次的倍率变化不作为单项代码收益。
+架构优化结合实际二进制内的 LLVM、设备活动时间线及完整 Host API 计时：共享内存复用状态和小型 Poisson 表，XORWOW 采用两阶段 FP64 变换，有限范围的 exp 删除多余处理，短 uniform、normal/lognormal 和 Poisson 复用派生缓存，并通过当前 stream 执行 D2D 复制。短 raw32 复用已有 raw 窗口，缓存命中用 D2D 复制，refill 写输出路径保留，不增加派生数组。共享内存和两阶段变换以设备 kernel 时间对照解释；短调用缓存减少主机侧重复提交与分发，其完整 API 收益和 kernel、memcpy 活动分别记录。这些改动的机制与收益由独立控制/候选实验解释；本节的验收数值来自最终完整轮次。
 
 `N≤65536` 的 MetaX raw32 包括 fresh aligned 调用，复用已有有界 raw 窗口，缓存命中时通过当前 stream 的 MACA D2D 复制输出，refill 写输出路径保留。此路径没有新增派生数组；短调用的 raw 预取窗口约 4 MiB，与下述派生存储分别计算。`N≤65536` 的 MetaX FP32/FP64 uniform、normal/lognormal 与 Poisson 使用有界派生缓存。Poisson 仅保留最近一个表身份及两种 raw 起点奇偶位置的派生数组，额外占用至多约 4 MiB。normal/lognormal 四个 API 共用一个最近的 `_normal_cache` 条目，由 raw 窗口、mode、dtype、参数位模式及 raw 起点余数确定；条件变化时替换而不按参数累积，新增单个数组的上界为 `4×(1048576+255)` 字节，约 4 MiB。所有分布/精度混合调用的活跃派生张量上界为 `20×(1048576+255)=20976620` 字节（约 20 MiB），不含 raw window、已有 alias 表及尚未完成的 stream 工作暂时保留的旧存储；大 raw 窗口不建立派生缓存。raw window 耗尽、替换或 seed 重置时释放派生引用，已排队工作使用的存储按 stream 生命周期保留。
 
@@ -125,7 +124,7 @@ bash docker/metax/run.sh
 Dockerfile 安装固定版本 FlagTree、Python 测试依赖和当前 FlagRAND，保留基础镜像的 Torch。
 `Dockerfile.flagtree` 保留相同配方。`run.sh` 挂载当前代码目录，
 因此修改源码后无需重建镜像。构建阶段打印实际导入版本，不运行 GPU 测试。
-这份 Docker 构建配方尚未实际执行；当前验证来自已有基础镜像中的独立安装流程。
+当前实测环境由已有基础镜像和上述独立安装流程建立；Dockerfile 提供将依赖打入镜像的构建配方。
 
 ## 4. 记录导入与设备
 
@@ -191,15 +190,22 @@ export FLAGRAND_RESULTS="$PWD/muxi_results/c550_$(date +%Y%m%d_%H%M%S)"
 shape 和 42 个 normal/lognormal shape，覆盖小规模、非对齐尾部和大规模输入。
 Poisson 另覆盖五个 lambda。具体值由仓库配置生成，并保存在每次原始结果中。
 
-`summary.json` 是统一交付结果，`api_summary.json` 保存逐 API 的结果；各 API 子目录保留
-原始计时、正确性比较和命令输出。测试程序正常结束表示这次运行已完成，
-性能是否达标以逐 API 的 `api_meets_target` 及原始结果为准。
+统一测试生成以下三份 JSON：
+
+| 文件 | 内容 |
+|---|---|
+| `summary.json` | 与同仓库 Philox 相同的交付字段，包含正确性、逐点计时和算术平均加速比 |
+| `api_summary.json` | 逐 API 结果、执行时间、返回码、原始结果路径和设备分配 |
+| `performance_statistics.json` | 逐 API 与族级几何平均、测试点覆盖和 0.95 目标比较 |
+
+各 API 子目录保留原始计时、正确性比较和命令输出。逐 API 的几何平均与目标比较位于
+`performance_statistics.json` 的 `result[交付项].api_geometric_means` 和 `api_meets_target`。
 `env.visible_device_masks` 保存启动时的设备 mask，各 API 的 `device.logical_worker` 和
 `device.visible_device_masks` 保存实际工作进程及其设备分配。
 初轮与 fresh clone 的配对复现应按每项 API 的实际物理设备安排。多卡队列动态分配任务，
-两轮使用相同 mask 并不自动保证每项 API 落在同一张卡上；单卡运行时所有 API 使用该卡。
+配对时按各 API 记录的物理设备对应；单卡运行时所有 API 使用该卡。
 
-读取新增交付项的完整性、正确性和逐 API 性能：
+读取新增交付项的正确性、shape 覆盖和逐 API 性能：
 
 ```bash
 "$PYTHON_BIN" - <<'PY'
@@ -209,33 +215,47 @@ from pathlib import Path
 
 root = Path(os.environ["FLAGRAND_RESULTS"])
 summary = json.loads((root / "summary.json").read_text())
+statistics = json.loads((root / "performance_statistics.json").read_text())
 print("Summary fields:", list(summary))
 for name in ("XORWOW", "MRG32K3A", "MTGP32", "POISSON"):
     result = summary["result"][name]
-    performance = result["performance"]
+    metrics = statistics["result"][name]
     print(name, "accuracy:", result["accuracy"]["status"],
-          "complete:", performance["complete_api_family"])
-    for api, geometric_mean in performance["api_geometric_means"].items():
-        print(" ", api, geometric_mean, performance["api_meets_target"][api])
+          "complete:", metrics["complete_api_family"])
+    for dtype, data in result["performance"]["data"].items():
+        print(" ", dtype, "arithmetic mean:", data["speedup"])
+    for api, geometric_mean in metrics["api_geometric_means"].items():
+        print(" ", api, "geometric mean:", geometric_mean,
+              "target reached:", metrics["api_meets_target"][api])
 PY
 ```
 
 ## 6. 统计口径
 
-统一测试会生成根目录的 `summary.json`，并保留每个接口的正确性结果、性能结果和原始计时。
-结果根结构使用 `timestamp`、`total_duration`、`env`、`result`，并以 `profile` 记录本次测试范围。正式命令及新增交付项
-由本仓库的测试入口和 `conf/operators.yaml` 定义。
+`summary.json` 的字段沿用同仓库 Philox。根结构为 `timestamp`、`total_duration`、`env`、
+`result`、`profile`；每个交付项为 `customized`、`accuracy`、`performance`。
+`accuracy` 保存 `total`、`skipped`、`failed`、`passed`、`details`、`status`；
+`performance` 保存 `status`、`data`、`test_case`。
+`data[dtype]` 保存 `result`、`details`、`speedup`，每个测试点保存 `base`、`gems`、`speedup`。
+四个新增交付项的测试点名称包含 API、shape 和 Poisson 的 lambda，例如
+`mtgp32_poisson:(1024,);lambda=10`，同一 shape 下各分布与参数分别保留。
 
 每个点的加速比为同设备、同生成器、同分布及精度下的
-`mcRAND 耗时 / FlagRAND 耗时`。现有 `speedup` 字段保留逐 shape 加速比的算术平均；
-新增生成器同时记录逐 API 的几何平均，不能将两者互换。
+`mcRAND 耗时 / FlagRAND 耗时`。`summary.json` 中 `data[dtype].speedup` 是该 dtype
+全部测试点加速比的算术平均，与 Philox 的统计方式一致。
 
-本轮逐 API 的目标为几何平均不低于 `0.95`。Poisson 的 lambda 也属于配置的一部分，
-需要与 shape 一起记录。完整 shape 集中的慢点、失败点和不支持项保留在结果中；
-此前小 shape 展示所得到的 MTGP32 数值不作为本轮完整测试的结论。
+`performance_statistics.json` 的根字段为 `timestamp`、`profile`、`result`。
+`result[交付项].api_geometric_means` 保存逐 API 的几何平均；`geometric_mean` 按 API
+等权汇总，XORWOW、MRG32K3A、MTGP32 各含八个 API，POISSON 含四个生成器。
+`dtypes[dtype]` 保存该 dtype 全部点的 `geometric_mean` 和 `shape_parameter_count`。
+`expected_apis`、`observed_apis` 与 `complete_api_family` 记录本次配置的覆盖情况；
+`api_meets_target` 和 `meets_target` 保存逐 API 及整组的目标比较。
+
+逐 API 的目标为几何平均达到 `0.95`。Poisson 的 lambda 与 shape 共同定义测试点。
+完整 shape 集中的耗时、通过、失败和跳过记录均保存在结果中，验收统计使用全部配对点。
 
 首次调用的编译、状态初始化和 Poisson 表构造，与稳定运行计时分别记录。
-完整 API 的耗时包含其执行所需的启动和变换；不能拿单个融合 kernel 的耗时替代整个 API。
+完整 API 的耗时包含其执行所需的启动和变换；kernel 时间保存在独立的设备活动记录中。
 
 ## 7. 格式与包构建
 

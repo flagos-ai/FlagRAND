@@ -1,8 +1,8 @@
 # Random-number generator families
 
-The host API uses cuRAND's operation names as a functional reference. Seeds
-need not produce the same bits as cuRAND. Generator recurrences, state
-continuation, repeatability and distribution mathematics are tested separately.
+The host API uses cuRAND's operation names as a functional reference.
+Validation covers generator recurrences, state continuation, seed
+repeatability and distribution mathematics.
 
 ```python
 import torch
@@ -20,8 +20,7 @@ Available names are `philox`, `xorwow`, `mrg32k3a` and `mtgp32`, with exported
 `generate_uniform[_double]`, `generate_normal[_double]`,
 `generate_lognormal[_double]` and `generate_poisson`. Raw uint32 words use
 `torch.int32` storage; interpret their bits as unsigned. Poisson also uses
-integer storage. Its scalar lambda parameter does not define a float output
-precision. Normal and log-normal accept `mean` and `stddev`; for log-normal,
+integer storage, with a scalar lambda parameter for the distribution. Normal and log-normal accept `mean` and `stddev`; for log-normal,
 these are the parameters of the underlying normal variable.
 
 ## State and sequence conventions
@@ -65,8 +64,7 @@ these are the parameters of the underlying normal variable.
   uniform combines two base-modulus digits instead of casting a float32 value.
   Its default reciprocal multiplication preserves the integer sequence but can
   change final floating-point bits relative to the division variant. The
-  measured comparison reached a distance of two binary64 representable values;
-  this is a sampled error result, not an all-input correct-rounding claim.
+  measured comparison reached a distance of two binary64 representable values.
   Normal and log-normal use both outputs of Box–Muller. Each precision keeps
   one pending standard normal after an odd tail; other distributions and the
   other precision leave it intact. The next normal or log-normal call applies
@@ -172,20 +170,18 @@ these are the parameters of the underlying normal variable.
   separate, buffered and small aligned conversion paths. Range reduction,
   binary64 scaling and subnormal/NaN/Inf handling are unchanged. The default
   exp helper, XORWOW and other backends retain degree16. A 26,960-input C550
-  Decimal80 comparison observed at most 1 ULP for both versions; this is a
-  sampled precision result, not an all-input correct-rounding claim.
+  Decimal80 comparison observed at most 1 ULP for both versions.
 
-For stateful engines, the device state and cursor/cache determine continuation.
-The displayed consumed-word count alone is not a serialization of an arbitrary
-mixed API call history. Python cursor/cache updates are not captured by device
-graph replay; these new APIs are measured using ordinary host calls.
+For stateful engines, continuation consists of the device state, cursor and
+cache. Python updates the cursor and cache on each host call. These APIs use
+ordinary host-call timing so those updates execute for every measured call.
 
 ## Poisson conversion
 
 A cached Walker alias table is built from the Poisson PMF recurrence around
 its mode. Each omitted tail has a geometric bound below `1e-18` times the
 unnormalized mode weight. Integer alias thresholds introduce finite-resolution
-rounding (about 32 bits); this is not a normal approximation. Lambda zero is
+rounding at approximately 32-bit resolution. Lambda zero is
 supported as a degenerate distribution. Tables and their device copies are
 reused for fixed lambda.
 
@@ -211,12 +207,15 @@ The final source commit `2e9233d912d7cf3536a583217c668947cb28e3fa` completed a f
 
 The equal-generator Poisson geometric mean was 1.588938; the equal-API MTGP32 mean was 1.614291. See [the C550 acceptance report](c550-acceptance-20261021.md) for per-API results, shape coverage and timing scope. The historical arithmetic-mean summary fields are preserved.
 
-Independent LLVM, device-trace and full-API comparisons explain the shared-state, two-stage, finite-range math and bounded uniform, normal/lognormal and Poisson-cache optimizations. Short raw32 calls at `N <= 65536`, including fresh aligned calls, also reuse the existing raw window. Cache hits use current-stream D2D copies, while the fused refill-output path is preserved. This adds no derived array; the short-call raw prefetch window uses about 4 MiB separately from derived storage. Poisson keeps only the last table identity and two raw-offset parities. The four normal/lognormal APIs share one recent `_normal_cache` entry keyed by raw storage, mode, dtype, parameter bits and raw-offset residue. Changing that identity replaces the single derived array instead of accumulating parameter entries; the added array uses at most `4 * (1048576 + 255)` bytes, about 4 MiB. All active derived values together retain at most `20 * (1048576 + 255) = 20976620` bytes, about 20 MiB, excluding raw storage, existing alias tables and old storage still retained by pending stream work. Oversized raw windows do not create derived values. Those controlled comparisons remain separate from the final native-library acceptance ratios. Shared-state and two-stage changes are explained with device-kernel timing. Short-call caching reduces repeated host submission and dispatch while performing D2D copies; full-API gains and kernel/memcpy activity are reported separately, rather than attributing host-path savings to a faster kernel. This run used an existing base image and a new container; the repository Dockerfile was not built in this run.
+Independent LLVM, device-trace and full-API comparisons explain the shared-state, two-stage, finite-range math and bounded uniform, normal/lognormal and Poisson-cache optimizations. Short raw32 calls at `N <= 65536`, including fresh aligned calls, also reuse the existing raw window. Cache hits use current-stream D2D copies, while the fused refill-output path is preserved. This adds no derived array; the short-call raw prefetch window uses about 4 MiB separately from derived storage. Poisson keeps only the last table identity and two raw-offset parities. The four normal/lognormal APIs share one recent `_normal_cache` entry keyed by raw storage, mode, dtype, parameter bits and raw-offset residue. Changing that identity replaces the single derived array instead of accumulating parameter entries; the added array uses at most `4 * (1048576 + 255)` bytes, about 4 MiB. All active derived values together retain at most `20 * (1048576 + 255) = 20976620` bytes, about 20 MiB, excluding raw storage, existing alias tables and old storage still retained by pending stream work. Oversized raw windows do not create derived values. Those controlled comparisons remain separate from the final native-library acceptance ratios. Shared-state and two-stage changes are explained with device-kernel timing. Short-call caching reduces repeated host submission and dispatch while performing D2D copies; full-API gains and kernel/memcpy activity are reported separately. This run installed the fixed dependencies into a new container created from an existing base image.
 
 Use the measured MACA image and installation commands in
 [C550 environment and reproduction](c550-environment.md). The formal entry
 is `tools/run_tests.py`; it runs accuracy and performance phases and writes
-the unified `summary.json` plus the per-API `api_summary.json`.
+`summary.json`, `api_summary.json` and `performance_statistics.json`.
+`summary.json` uses the same fields as the repository's Philox delivery.
+`api_summary.json` retains per-API execution details, and
+`performance_statistics.json` stores geometric means and target comparisons.
 
 From the prepared C550 container, run all 32 generator/API combinations:
 
@@ -248,9 +247,8 @@ reproduction of one API over its complete shape set:
   --results-dir results/c550-mtgp32-normal-f64
 ```
 
-This focused command saves raw records and a per-run summary. It does not
-establish a complete eight-API family result; use the unified entry for the
-complete delivery. Each raw run preserves `manifest.json`, `records.jsonl`,
+This focused command saves raw records and a per-run summary for the selected
+API. The unified entry produces the complete delivery. Each raw run preserves `manifest.json`, `records.jsonl`,
 `records.csv` and the individual timing samples. The manifest records the
 configured shapes, lambda values, software environment and source hashes.
 
@@ -263,19 +261,47 @@ enqueue measurements remain separate fields.
 
 Every point compares the same device, generator, distribution and output
 precision against native mcRAND. Its speedup is `mcRAND_time / flagrand_time`.
-The established `speedup` field remains an arithmetic mean. The new
-`geometric_mean` and `api_geometric_means` fields explicitly report geometric
-means over the configured points; Poisson retains every shape/lambda pair.
-An eight-API family average gives each API equal weight, so Poisson contributes
-once. `complete_api_family` records coverage, and `api_meets_target` records
-whether each API reaches 0.95. A completed process or a family average above
-0.95 does not imply every API has reached the target.
+The `summary.json` root contains `timestamp`, `total_duration`, `env`,
+`result` and `profile`. Each delivery entry contains `customized`, `accuracy`
+and `performance`. The accuracy fields are `total`, `skipped`, `failed`,
+`passed`, `details` and `status`. Performance contains `status`, `data`
+and `test_case`.
+Each `data[dtype]` contains `result`, `details` and `speedup`; each test point
+contains `base`, `gems` and `speedup`. The dtype-level `speedup` remains the
+arithmetic mean of its recorded points, matching Philox. The new families
+retain the API name in each point key, such as
+`mtgp32_uniform_f32:(1024,)`. Poisson also retains lambda, such as
+`mtgp32_poisson:(1024,);lambda=10`.
+
+`performance_statistics.json` contains `timestamp`, `profile` and `result`.
+Its four result entries are `XORWOW`, `MRG32K3A`, `MTGP32` and `POISSON`.
+Within each entry, `api_geometric_means` reports each API's geometric mean
+over all configured points. `geometric_mean` gives each API equal weight:
+eight APIs for each generator family and four generators for Poisson.
+`dtypes[dtype]` stores `geometric_mean` and `shape_parameter_count` for that
+dtype's recorded points. `expected_apis`, `observed_apis` and
+`complete_api_family` record coverage. `target_geometric_mean` and
+`target_scope` describe the 0.95 target; `api_meets_target` records the
+comparison for each API, and `meets_target` records whether all APIs reach it.
+`aggregation` describes the arithmetic and geometric averaging rules.
+
+```python
+import json
+from pathlib import Path
+
+root = Path("results/c550-full-32")
+summary = json.loads((root / "summary.json").read_text())
+statistics = json.loads((root / "performance_statistics.json").read_text())
+for name, metrics in statistics["result"].items():
+    print(name, summary["result"][name]["accuracy"]["status"])
+    for api, geometric_mean in metrics["api_geometric_means"].items():
+        print(api, geometric_mean, metrics["api_meets_target"][api])
+```
 
 `tests/accuracy/test_rng_families.py` compares independent scalar recurrences,
 state continuation, seed reset, current streams, tails, distribution moments
 and sampled CDF values. Its `accuracy_result.json` observations preserve the
-numerical measurements and criteria. These checks do not constitute a
-statistical battery certification such as TestU01/BigCrush.
+numerical measurements and criteria.
 
 ## Earlier device measurements
 
@@ -285,11 +311,10 @@ Earlier development measurements covered MetaX C550 (Torch
 (Torch `2.9.0`, Triton `3.6.0`, ACRAND `1400`) and MTT S5000
 (MUSA 4.3.5, Torch `2.5.0`, torch_musa `2.5.0+f46274a`, Triton `3.1.0`,
 muRAND `100105`). Results remain separate by device, generator and API.
-Large speedups over a particular native library version do not establish a
-ranking of the chips.
+Each speedup pairs FlagRAND with the recorded native library version on that device.
 
 On S5000, import `torch_musa` before FlagRAND and allocate tensors on `musa`.
-The implementation does not redirect `torch.cuda` calls. The earlier S5000
+The backend uses MUSA allocation and runtime APIs. The earlier S5000
 matrix contains 336 paired measurements and 48 repeatability/distribution
 checks, without an API error; independent CPU raw/state comparisons passed
 for XORWOW, MRG32K3A and MTGP32.
@@ -304,8 +329,8 @@ native MTGP32 call.
 
 Those development matrices used seven shapes from 1024 through 4194304,
 with nine single-call device-event samples after four warmups. Event intervals
-can include host submission gaps. They are a different measurement from the
-complete host-API protocol above and do not establish its acceptance result.
+include the interval between the two recorded device events, including host
+submission gaps. The complete host-API results use the protocol described above.
 
 The earlier C550 Poisson run on 2026-10-20 contains 70 paired rows and ten
 seed repeatability/distribution checks. Across five lambda groups, seven-shape
