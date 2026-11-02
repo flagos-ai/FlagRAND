@@ -57,10 +57,18 @@ def _uniform_kernel(RAW, OUT, N, F64: tl.constexpr, BLOCK: tl.constexpr):
     tl.store(OUT + i, value, i < N)
 
 
-@lru_cache(maxsize=4)
-def build_normal_kernel(native_log: bool = False, finite_exp: bool = False):
-    """Bind MetaX's measured FP64 log and exp once for public dispatch.
+@lru_cache(maxsize=8)
+def build_normal_kernel(
+    native_log: bool = False,
+    finite_exp: bool = False,
+    ppu_fast_log: bool = False,
+    *,
+    ppu_native_log64: bool = False,
+    ppu_native_exp64: bool = False,
+):
+    """Bind the backend math once for public normal dispatch.
 
+    The PPU FP32 log, FP64 log and FP64 exp options are independent.
     Other backends retain log_unit64. The MetaX frontend exposes its native
     FP64 log through the CUDA libdevice compatibility module.
     """
@@ -72,6 +80,23 @@ def build_normal_kernel(native_log: bool = False, finite_exp: bool = False):
     else:
         log64 = log_unit64
         exp_function = exp64
+
+    if ppu_native_log64:
+        from ._mtgp32_ppu_math import _ppu_log64
+
+        log64 = _ppu_log64
+
+    if ppu_native_exp64:
+        from ._mtgp32_ppu_math import _ppu_exp64
+
+        exp_function = _ppu_exp64
+
+    if ppu_fast_log:
+        from ._mtgp32_ppu_math import _ppu_log32
+
+        log32 = _ppu_log32
+    else:
+        log32 = tl.log
 
     def normal_kernel(
         RAW,
@@ -100,7 +125,7 @@ def build_normal_kernel(native_log: bool = False, finite_exp: bool = False):
             b = tl.load(RAW + 2 * i + 1, active, other=0).to(tl.uint32, bitcast=True)
             u1 = ((a >> 8) + 1).to(tl.float32) * 5.960464477539063e-8
             u2 = ((b >> 8) + 1).to(tl.float32) * 5.960464477539063e-8
-            radius = tl.sqrt(-2.0 * tl.log(u1))
+            radius = tl.sqrt(-2.0 * log32(u1))
             mu = MU_BITS.to(tl.uint32).to(tl.float32, bitcast=True)
             sigma = SIGMA_BITS.to(tl.uint32).to(tl.float32, bitcast=True)
         sine, cosine = sincos_turns(u2, F64)

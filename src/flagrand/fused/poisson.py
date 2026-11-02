@@ -73,12 +73,24 @@ def _raw_poisson(
     tl.store(out + i, value, i < n)
 
 
-def generate_poisson(engine, out, lam: float, *, block_size=256, num_warps=None, fused_mtgp32=True):
+def generate_poisson(engine, out, lam: float, *, block_size=None, num_warps=None, fused_mtgp32=True):
     requested_warps = num_warps
+    requested_block_size = block_size
     num_warps = 4 if num_warps is None else num_warps
     n = out.numel()
     if not n:
         return out
+    if block_size is None:
+        # At 16 Mi outputs on PPU, one element per thread removes the shared
+        # state-writeback layout conversion seen with BLOCK=256 and 4 warps.
+        block_size = (
+            128
+            if isinstance(engine, XorwowGenerator)
+            and n >= 16777216
+            and num_warps == 4
+            and get_vendor_info().vendor_name == "thead"
+            else 256
+        )
     raw_range = getattr(engine, "raw_range", 1 << 32)
     key = (float(lam), raw_range, str(out.device))
     if key not in _DEVICE_TABLES:
@@ -125,6 +137,34 @@ def generate_poisson(engine, out, lam: float, *, block_size=256, num_warps=None,
         engine.offset += 2 * n
         engine._state_offset = engine.offset
         engine._cursor = (engine._cursor + 2 * n) % engine.nstreams
+    elif (
+        isinstance(engine, Mtgp32Generator)
+        and fused_mtgp32
+        and requested_warps is None
+        and requested_block_size is None
+        and out.dtype == torch.int32
+        and engine._uses_thead_buffer(n)
+    ):
+        from flagrand.rng._mtgp32_thead_buffered import generate_buffered
+
+        generate_buffered(engine, out, "poisson", threshold=threshold, aliases=aliases, first=first, size=size)
+    elif (
+        isinstance(engine, Mtgp32Generator)
+        and fused_mtgp32
+        and requested_warps is None
+        and requested_block_size is None
+        and out.dtype == torch.int32
+        and n >= 128
+        and n % 128 == 0
+        and engine.offset % 256 == 0
+        and getattr(engine, "_chunk_cache", None) is None
+        and get_vendor_info().vendor_name == "thead"
+    ):
+        from flagrand.rng._mtgp32_thead_poisson import generate_poisson_aligned
+
+        engine._prepare_thead_stream(out.device)
+        # The PPU 256/512-entry table comparison selects the load predicates.
+        generate_poisson_aligned(engine, out, threshold, aliases, first, size, mask_alias=size >= 512)
     elif (
         isinstance(engine, Mtgp32Generator)
         and fused_mtgp32

@@ -1,8 +1,9 @@
-"""Run the fixed C550 family matrix with the existing total-API timing protocol."""
+"""Run the fixed RNG-family matrix with the existing total-API timing protocol."""
 
 import argparse
 import hashlib
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -12,6 +13,8 @@ from benchmark.rng_delivery.config import OPERATORS, PROFILES, parameter_values,
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=PROFILES, default="smoke")
+    parser.add_argument("--platform", choices=("metax", "thead"), default="metax")
+    parser.add_argument("--native-support", type=Path, default=os.environ.get("FLAGRAND_PPU_NATIVE_SUPPORT"))
     parser.add_argument("--distributions", default=",".join(OPERATORS))
     parser.add_argument("--seed", type=int, default=20261020)
     parser.add_argument("--results-dir", type=Path, default=Path("rng_results"))
@@ -19,6 +22,7 @@ def main(argv=None):
 
     from benchmark.muxi_matrix.compat import collect_environment
     from benchmark.rng_delivery.cases import run_case
+    from benchmark.rng_delivery.native import discover_native_support, native_provider
     from benchmark.rng_delivery.reporting import write_results
 
     operators = args.distributions.split(",")
@@ -27,8 +31,22 @@ def main(argv=None):
         parser.error(f"unknown operator IDs: {sorted(unknown)}")
     run_directory = args.results_dir / f"{datetime.now():%Y%m%d_%H%M%S}_rng_{args.profile}"
     run_directory.mkdir(parents=True)
+    mtgp32_build = None
+    if args.platform == "thead" and any(split_operator(op)[0] == "mtgp32" for op in operators):
+        from benchmark.ppu_matrix.build import baseline_build_record, prepare_mtgp32_baseline
+
+        prepare_mtgp32_baseline(run_directory / "native-build/mtgp32")
+        mtgp32_build = baseline_build_record()
+    native_support = json.loads(args.native_support.read_text()) if args.native_support is not None else {}
+    if args.platform == "thead" and native_support:
+        os.environ["FLAGRAND_ACRAND_PATH"] = native_support["environment"]["native_library"]
+    baselines = {operator: native_provider(args.platform, split_operator(operator)[0])[0] for operator in operators}
+    baseline_names = set(baselines.values())
+    if args.native_support is not None:
+        (run_directory / "native-support.json").write_text(json.dumps(native_support, indent=2) + "\n")
     root = Path(__file__).resolve().parents[1]
     source = sorted((root / "src/flagrand").rglob("*.py"))
+    source += sorted((root / "src/flagrand").rglob("*.cpp"))
     source += sorted((root / "benchmark/rng_delivery").glob("*.py")) + [Path(__file__).resolve()]
     source += [
         root / path
@@ -43,9 +61,14 @@ def main(argv=None):
             "conf/operators.yaml",
         )
     ]
+    if args.platform == "thead":
+        source += sorted((root / "benchmark/ppu_matrix").glob("*.py"))
+        source += sorted((root / "benchmark/ppu_matrix").glob("*.hg"))
+        source += [root / "tools/build_ppu_mtgp32_baseline.py"]
     manifest = {
-        "platform": "metax",
-        "acceptance_baseline": "mcrand",
+        "platform": args.platform,
+        "acceptance_baseline": next(iter(baseline_names)) if len(baseline_names) == 1 else "per_operator",
+        "acceptance_baselines": baselines,
         "profile": args.profile,
         "distributions": operators,
         "seed": args.seed,
@@ -63,18 +86,47 @@ def main(argv=None):
         "shape_map": {op: list(shapes_for(split_operator(op)[1], args.profile)) for op in operators},
         "lambda_map": {op: list(parameter_values(split_operator(op)[1])) for op in operators},
         "source_sha256": {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest() for p in source},
+        "native_support": {
+            "source": str(args.native_support) if args.native_support is not None else None,
+            "sha256": hashlib.sha256(args.native_support.read_bytes()).hexdigest() if args.native_support else None,
+        },
     }
+    if mtgp32_build is not None:
+        manifest["native_build"] = {"ppu_sdk_mtgp32_device": mtgp32_build}
     records = []
     write_results(run_directory, manifest, records)
     for operator in operators:
-        _, api = split_operator(operator)
+        engine, api = split_operator(operator)
+        baseline_name = baselines[operator]
+        if baseline_name == "ppu_acrand":
+            library_path = native_provider(args.platform, engine)[2]()
+            discover_native_support(native_support, engine, api, library_path)
+            support_path = run_directory / "native-support.json"
+            support_path.write_text(json.dumps(native_support, indent=2) + "\n")
+            manifest["native_support"].update(
+                recorded_file=support_path.name,
+                recorded_sha256=hashlib.sha256(support_path.read_bytes()).hexdigest(),
+            )
         for lam in parameter_values(api):
             for n in shapes_for(api, args.profile):
-                candidate = run_case(operator, n, lam, args.seed, PROFILES[args.profile])
-                baseline = run_case(operator, n, lam, args.seed, PROFILES[args.profile], native=True)
+                candidate = run_case(operator, n, lam, args.seed, PROFILES[args.profile], platform=args.platform)
+                baseline = run_case(
+                    operator,
+                    n,
+                    lam,
+                    args.seed,
+                    PROFILES[args.profile],
+                    native=True,
+                    platform=args.platform,
+                    native_support=native_support,
+                )
                 if candidate["status"] == baseline["status"] == "pass":
-                    candidate["speedup_vs_mcrand"] = baseline["total_ms_median"] / candidate["total_ms_median"]
-                    candidate["device_speedup_vs_mcrand"] = baseline["device_ms_median"] / candidate["device_ms_median"]
+                    candidate[f"speedup_vs_{baseline_name}"] = (
+                        baseline["total_ms_median"] / candidate["total_ms_median"]
+                    )
+                    candidate[f"device_speedup_vs_{baseline_name}"] = (
+                        baseline["device_ms_median"] / candidate["device_ms_median"]
+                    )
                 records.extend((candidate, baseline))
                 print(
                     json.dumps(
@@ -84,7 +136,7 @@ def main(argv=None):
                             "lambda": lam,
                             "candidate_status": candidate["status"],
                             "baseline_status": baseline["status"],
-                            "speedup": candidate.get("speedup_vs_mcrand"),
+                            "speedup": candidate.get(f"speedup_vs_{baseline_name}"),
                         }
                     ),
                     flush=True,
@@ -93,7 +145,7 @@ def main(argv=None):
     manifest["finished_at"] = datetime.now().isoformat()
     write_results(run_directory, manifest, records)
     print(f"Results: {run_directory}", flush=True)
-    return int(any(record["status"] != "pass" for record in records))
+    return int(any(record["status"] not in {"pass", "unsupported"} for record in records))
 
 
 if __name__ == "__main__":

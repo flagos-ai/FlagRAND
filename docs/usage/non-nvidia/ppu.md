@@ -2,6 +2,12 @@
 
 PPU 路径保留标准 Philox4x32-10 位流和七个 public API，并同时对比 PPU 的 `libcurand.so` 兼容实现与原生 `libacrand.so`。正式性能 baseline 使用 `ppu_acrand`。
 
+XORWOW、MRG32K3A、MTGP32 和四生成器 Poisson 的当前环境、统一测试命令与结果口径，
+见[随机数算子运行与测量](ppu-rng-families.md)。MTGP32 的 SDK device 函数加 host 封装、
+构建命令和精度范围见 [MTGP32 SDK 基线](ppu-mtgp32-baseline.md)。统一 runner 在本次结果目录中
+自动编译基线，无需提供历史共享库或支持记录。完整组合版本已有 1780 配置结果；2026-11-02
+另外完成了新源码目录的安装、自动构建和 25 API smoke。下文保留 Philox 的历史环境与入口。
+
 ## 正式验收
 
 统一后端名称为 `thead`。当前 CI 依赖由 `conf/backends.yaml` 固定为 Python 3.12、

@@ -1,13 +1,13 @@
-"""Public-API correctness and native mcRAND comparisons on C550."""
+"""Public-API correctness and same-device native RNG comparisons."""
 
 import math
 import traceback
 
 import torch
 
-from benchmark.muxi_matrix.mcrand import McrandGenerator, mcrand_library_path, mcrand_version
 from benchmark.muxi_matrix.timing import measure
 from benchmark.rng_delivery.config import NATIVE_TYPES, split_operator
+from benchmark.rng_delivery.native import discover_native_support, native_provider
 from flagrand import curand
 
 DTYPES = {
@@ -112,10 +112,11 @@ def validate_output(output, replay, api, lam=None):
     }
 
 
-def run_case(operator, n, lam, seed, profile, *, native=False):
+def run_case(operator, n, lam, seed, profile, *, native=False, platform="metax", native_support=None):
     engine, api = split_operator(operator)
+    baseline_name, generator_class, library_path, library_version = native_provider(platform, engine)
     record = {
-        "backend": "mcrand" if native else "flagrand_public",
+        "backend": baseline_name if native else "flagrand_public",
         "generator": engine,
         "distribution": operator,
         "api": api,
@@ -125,19 +126,33 @@ def run_case(operator, n, lam, seed, profile, *, native=False):
         "lambda": lam,
         "status": "pending",
     }
+    if native and baseline_name == "ppu_acrand":
+        if native_support is None:
+            native_support = {}
+        observation = discover_native_support(native_support, engine, api, library_path())
+        if observation["status"] != "pass":
+            record.update(
+                status=observation["status"],
+                native_rng_type=NATIVE_TYPES[engine],
+                reason=observation.get("reason") or observation.get("error") or observation["status"],
+                native_probe=observation,
+            )
+            return record
     try:
         sentinel = -2147483648 if DTYPES[api] == torch.int32 else math.nan
         output = torch.full((n,), sentinel, dtype=DTYPES[api], device="cuda")
         replay = torch.full_like(output, sentinel)
         if native:
             record.update(
-                library_path=mcrand_library_path(),
-                library_version=mcrand_version(),
+                library_path=library_path(),
+                library_version=library_version(),
                 native_rng_type=NATIVE_TYPES[engine],
             )
-            with McrandGenerator(seed=seed, rng_type=NATIVE_TYPES[engine]) as generator:
+            with generator_class(seed=seed, rng_type=NATIVE_TYPES[engine]) as generator:
                 generator.generate(api, output, lam=10.0 if lam is None else lam)
-            with McrandGenerator(seed=seed, rng_type=NATIVE_TYPES[engine]) as generator:
+                if baseline_name == "ppu_sdk_mtgp32_device":
+                    record["baseline_metadata"] = generator.metadata()
+            with generator_class(seed=seed, rng_type=NATIVE_TYPES[engine]) as generator:
                 generator.generate(api, replay, lam=10.0 if lam is None else lam)
         else:
             generator = curand.create_generator(engine, seed=seed)
@@ -147,7 +162,7 @@ def run_case(operator, n, lam, seed, profile, *, native=False):
         record["validation"] = validate_output(output, replay, api, lam)
         # Preserve timings even when correctness fails; status identifies the failure.
         if native:
-            with McrandGenerator(seed=seed, rng_type=NATIVE_TYPES[engine]) as generator:
+            with generator_class(seed=seed, rng_type=NATIVE_TYPES[engine]) as generator:
                 record.update(
                     measure(lambda: generator.generate(api, output, lam=10.0 if lam is None else lam), profile)
                 )

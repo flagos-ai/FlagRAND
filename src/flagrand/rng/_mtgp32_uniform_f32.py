@@ -8,6 +8,7 @@ blocks. State IDs, output-block order and word consumption are unchanged.
 import triton
 import triton.language as tl
 
+from flagrand.runtime.backend import get_vendor_info
 from flagrand.runtime.compiled_launcher import CachedKernelLauncher
 from flagrand.runtime.specialization import launch_specialization_key
 
@@ -108,7 +109,25 @@ def generate_uniform_f32_aligned(
         blocks,
     )
     warps = mtgp32_launch_warps(blocks, (blocks + states - 1) // states, num_warps)
-    if cached_launch:
+    if blocks >= 65536 and warps == 8 and not linear_table and get_vendor_info().vendor_name == "thead":
+        from ._mtgp32_thead_shared import launch_thead_shared
+
+        signatures = (
+            ((out.dtype, out.data_ptr() % 16 == 0),) + engine._ws_tensor_signatures
+            if keyed_launch and cache_tensor_signature
+            else None
+        )
+        launch_thead_shared(
+            *arguments[:7],
+            start_block=arguments[7],
+            block_count=blocks,
+            num_warps=warps,
+            cached_launch=cached_launch,
+            keyed_launch=keyed_launch,
+            tensor_signatures=signatures,
+            output_mode=1,
+        )
+    elif cached_launch:
         constants = (states, MTGP32_BLOCK_SIZE, MTGP32_STATE_MASK, MTGP32_MASK, MTGPDC_N, linear_table)
         if keyed_launch:
             signatures = (

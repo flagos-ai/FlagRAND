@@ -1,4 +1,4 @@
-"""C550 public families: exact recurrence, continuation, tails and distributions."""
+"""Public families: exact recurrence, continuation, tails and distributions."""
 
 import math
 import struct
@@ -13,12 +13,15 @@ from flagrand import curand
 from flagrand.runtime import current_vendor
 
 pytestmark = pytest.mark.skipif(
-    not torch.cuda.is_available() or current_vendor() != "metax", reason="C550 MACA runtime is required"
+    not torch.cuda.is_available() or current_vendor() not in {"metax", "thead"},
+    reason="A MetaX or PPU CUDA-compatible runtime is required",
 )
+metax_only = pytest.mark.skipif(current_vendor() != "metax", reason="This test exercises a MetaX-specific path")
 CASES = [pytest.param(op, marks=getattr(pytest.mark, op)) for op in OPERATORS]
 
 
 @pytest.mark.mtgp32_lognormal_f64
+@metax_only
 def test_metax_exp_degree13_decimal_boundaries(record_property):
     import triton
     import triton.language as tl
@@ -97,6 +100,7 @@ def test_metax_exp_degree13_decimal_boundaries(record_property):
 
 @pytest.mark.mtgp32_lognormal_f64
 @pytest.mark.parametrize("seed", [73, 20261020])
+@metax_only
 def test_mtgp32_lognormal_fp64_across_direct_threshold(seed, record_property):
     n = 1048576
     bulk = curand.create_generator("mtgp32", seed=seed)
@@ -118,6 +122,7 @@ def test_mtgp32_lognormal_fp64_across_direct_threshold(seed, record_property):
 
 
 @pytest.mark.mtgp32_lognormal_f64
+@metax_only
 def test_mtgp32_exp_range_switch_and_continuation(monkeypatch, record_property):
     """Finite-range and general exp agree across all three public paths."""
     from flagrand.rng import _mtgp32_buffered, _mtgp32_direct_words, mtgp32
@@ -278,6 +283,7 @@ def test_continuation_and_current_stream(operator, record_property):
     ],
 )
 @pytest.mark.parametrize("seed", [73, 20261020])
+@metax_only
 def test_mtgp32_uniform_cache_lifetime(monkeypatch, record_property, seed, cache_api):
     from flagrand.rng import _mtgp32_buffered as buffered
 
@@ -349,6 +355,7 @@ def test_mtgp32_uniform_cache_lifetime(monkeypatch, record_property, seed, cache
 
 @pytest.mark.mtgp32_poisson
 @pytest.mark.parametrize("seed", [73, 20261020])
+@metax_only
 def test_mtgp32_poisson_cache_lifetime(record_property, seed):
     from flagrand.fused.poisson import _DEVICE_TABLES
     from flagrand.rng import _mtgp32_buffered as buffered
@@ -467,6 +474,7 @@ def test_mtgp32_poisson_cache_lifetime(record_property, seed):
     ],
 )
 @pytest.mark.parametrize("seed", [73, 20261020])
+@metax_only
 def test_mtgp32_normal_cache_lifetime(record_property, seed, cache_api):
     from flagrand.rng import _mtgp32_buffered as buffered
 
@@ -664,6 +672,7 @@ def test_raw_scalar_reference_and_state(engine, seed, record_property):
         pytest.param("uniform_f64", 128, marks=pytest.mark.mtgp32_uniform_f64),
     ],
 )
+@metax_only
 def test_mtgp32_mixed_api_raw_cache_and_state(record_property, first_api, first_n):
     """A prefetched tail survives aligned calls, distribution changes and refill."""
     reference = curand.create_generator("mtgp32", seed=73)
@@ -724,6 +733,7 @@ def test_xorwow_two_stage_state_and_workspace(api, seed, record_property):
     generator = curand.create_generator("xorwow", seed=seed)
     reference = curand.create_generator("xorwow", seed=seed)
     function = curand.generate_lognormal_double if api == "lognormal_f64" else curand.generate_normal_double
+    two_stage_n = 16777216 if current_vendor() == "thead" else 1048576
     observations = []
 
     def compare(n, mean, stddev):
@@ -758,10 +768,10 @@ def test_xorwow_two_stage_state_and_workspace(api, seed, record_property):
     stream = torch.cuda.Stream()
     stream.wait_stream(torch.cuda.current_stream())
     with torch.cuda.stream(stream):
-        compare(1048576, -0.25, 1.5)
+        compare(two_stage_n, -0.25, 1.5)
     torch.cuda.current_stream().wait_stream(stream)
     assert sorted(entry[1].numel() for entry in generator.engine._distribution_workspaces.values()) == [
-        2 * 1048576,
+        2 * two_stage_n,
         2 * 16777216,
     ]
     record_property("workspace_streams_before_reset", len(generator.engine._distribution_workspaces))
@@ -769,7 +779,7 @@ def test_xorwow_two_stage_state_and_workspace(api, seed, record_property):
         curand.set_pseudo_random_generator_seed(handle, seed + 1)
     assert not generator.engine._distribution_workspaces
     record_property("workspace_released_by_seed_reset", True)
-    compare(1048576, 0.0, 1.0)
+    compare(two_stage_n, 0.0, 1.0)
     raw = [torch.empty(257, dtype=torch.int32, device="cuda") for _ in range(2)]
     for handle, output in zip((generator, reference), raw):
         curand.generate(handle, output)
@@ -785,6 +795,7 @@ def test_xorwow_two_stage_state_and_workspace(api, seed, record_property):
 @pytest.mark.mtgp32_raw32
 @pytest.mark.mtgp32_normal_f64
 @pytest.mark.mtgp32_lognormal_f64
+@metax_only
 def test_mtgp32_tle_region_and_partial_continuation(monkeypatch, record_property):
     """Switch recurrence storage across the size boundary and retain raw cache."""
     from flagrand.rng import _mtgp32_kernel
@@ -828,6 +839,7 @@ def test_mtgp32_tle_region_and_partial_continuation(monkeypatch, record_property
 
 @pytest.mark.mtgp32_raw32
 @pytest.mark.mtgp32_uniform_f32
+@metax_only
 def test_mtgp32_refill_output_fusion_continuation(monkeypatch, record_property):
     """Writing public output during refill preserves cache and recurrence state."""
     from flagrand.rng import _mtgp32_buffered
@@ -892,6 +904,7 @@ def test_mtgp32_refill_output_fusion_continuation(monkeypatch, record_property):
 @pytest.mark.mtgp32_normal_f32
 @pytest.mark.mtgp32_lognormal_f32
 @pytest.mark.parametrize("seed", [73, 20261020])
+@metax_only
 def test_mtgp32_shared_pairs_boundary_continuation(monkeypatch, record_property, seed):
     """Shared pairs preserve the sequence, region boundaries and partial cache."""
     from flagrand.rng import _mtgp32_direct_pairs
@@ -992,6 +1005,7 @@ def test_mtgp32_shared_pairs_boundary_continuation(monkeypatch, record_property,
 @pytest.mark.mtgp32_lognormal_f64
 @pytest.mark.mtgp32_poisson
 @pytest.mark.parametrize("seed", [73, 20261020])
+@metax_only
 def test_mtgp32_shared_refill_continuation(monkeypatch, record_property, seed):
     """Large refills preserve prefix words, complete state and mixed continuation."""
     from flagrand.rng import _mtgp32_buffered as buffered

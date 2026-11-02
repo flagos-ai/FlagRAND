@@ -200,8 +200,9 @@ def supported_operator_ids(selected_platform: str) -> set[str]:
         return set(ALL_DISTRIBUTIONS)
     if selected_platform == "thead":
         from benchmark.muxi_matrix.config import ALL_DISTRIBUTIONS
+        from benchmark.rng_delivery.config import OPERATORS
 
-        return set(ALL_DISTRIBUTIONS)
+        return set(ALL_DISTRIBUTIONS) | set(OPERATORS)
     raise RuntimeError(f"unsupported FlagRAND platform: {selected_platform}")
 
 
@@ -436,7 +437,7 @@ def run_accuracy(gpu_id: int, operator: dict[str, Any], config: RunnerConfig) ->
         # Completed cases remain useful even when LLVM aborts the following case.
         # A partial list of passes cannot make the accuracy phase pass.
         result["status"] = "Timeout" if code == TIMEOUT else "Failed" if code == 1 else "Error"
-        result["details"]["process_exit"] = {"exit_code": code}
+        result["details"]["process_exit"] = {f"exit_code={code}": [operator_id]}
     result.update(
         {
             "exit_code": code,
@@ -456,7 +457,7 @@ def _performance_command(
     from benchmark.rng_delivery.config import OPERATORS
 
     if operator_id in OPERATORS:
-        return [
+        command = [
             sys.executable,
             "-m",
             "benchmark.run_rng_delivery",
@@ -467,6 +468,9 @@ def _performance_command(
             "--results-dir",
             str(raw_dir),
         ]
+        if config.platform == "thead":
+            command.extend(("--platform", "thead"))
+        return command
     module = os.environ.get("FLAGRAND_PERF_MODULE", PERFORMANCE_MODULES[config.platform])
     profile = config.profile
     benchmark_profile = (
@@ -829,6 +833,23 @@ def main(argv: list[str] | None = None) -> int:
     pinfo(f"Platform ... {selected_platform}")
     pinfo(f"Testing {len(operators)} operators on devices {gpu_ids} ...")
     pinfo(f"Results ... {config.output_dir}")
+
+    if selected_platform == "thead" and any(str(op["id"]).startswith("mtgp32_") for op in operators):
+        from benchmark.ppu_matrix.build import prepare_mtgp32_baseline
+
+        build_directory = config.output_dir / "native-build/mtgp32"
+        prepare_mtgp32_baseline(build_directory)
+        pinfo("Preparing the PPU Tensor copy extension ...")
+        build_directory.mkdir(parents=True, exist_ok=True)
+        with (build_directory / "tensor-copy.log").open("w") as output:
+            subprocess.run(
+                [sys.executable, "-m", "flagrand.runtime.ppu_tensor_copy"],
+                cwd=ROOT,
+                env=worker_env(selected_platform, gpu_ids[0]),
+                stdout=output,
+                stderr=subprocess.STDOUT,
+                check=True,
+            )
 
     work_queue: Queue = Queue()
     event_queue: Queue = Queue()

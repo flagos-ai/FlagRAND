@@ -24,8 +24,9 @@ def write_results(directory, manifest, records):
         "total_ms_median",
         "device_ms_median",
         "enqueue_us_median",
-        "speedup_vs_mcrand",
     ]
+    baseline_names = set(manifest.get("acceptance_baselines", {}).values()) or {manifest["acceptance_baseline"]}
+    columns.extend(f"speedup_vs_{name}" for name in sorted(baseline_names))
     with (directory / "records.csv").open("w", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=columns, extrasaction="ignore")
         writer.writeheader()
@@ -58,9 +59,9 @@ def write_results(directory, manifest, records):
     }
     (directory / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     lines = [
-        "# C550 RNG results",
+        f"# {manifest['platform']} RNG results",
         "",
-        "Primary timing: total_ms_median; speedup=mcRAND/FlagRAND.",
+        f"Primary timing: total_ms_median; speedup={manifest['acceptance_baseline']}/FlagRAND.",
         "The existing speedup field is an arithmetic mean; geometric_mean is reported separately.",
         "",
         "| API | dtype | Points | Arithmetic mean | Geometric mean | Status |",

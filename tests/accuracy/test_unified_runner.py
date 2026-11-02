@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from queue import SimpleQueue
 
+from benchmark.summary_json import aggregate_delivery_results
 from tools.run_tests import (
     PLATFORM_ALIASES,
     RunnerConfig,
@@ -34,10 +35,10 @@ def test_accuracy_retains_completed_case_when_next_case_aborts(tmp_path, monkeyp
     test_file.write_text(
         """import os
 import pytest
-@pytest.mark.raw32
+@pytest.mark.mrg32k3a_raw32
 def test_00_pass():
     assert 1 == 1
-@pytest.mark.raw32
+@pytest.mark.mrg32k3a_raw32
 def test_01_abort():
     os._exit(86)
 """
@@ -46,15 +47,27 @@ def test_01_abort():
     monkeypatch.setattr(runner, "_accuracy_test_paths", lambda *_: [test_file])
     monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
     config = RunnerConfig(
-        output_dir=tmp_path / "results", platform="iluvatar", profile="acceptance", dump_output=True, timeout=30
+        output_dir=tmp_path / "results", platform="thead", profile="acceptance", dump_output=True, timeout=30
     )
-    result = run_accuracy(0, {"id": "raw32"}, config)
+    result = run_accuracy(0, {"id": "mrg32k3a_raw32"}, config)
     assert result["status"] == "Error"
     assert result["exit_code"] == 86
     assert result["passed"] == 1
     assert result["total"] == 1
     records = json.loads((config.output_dir / result["data_file"]).read_text())
     assert next(iter(records.values()))["result"] == "passed"
+    summary = aggregate_delivery_results(
+        {
+            "mrg32k3a_raw32": {
+                "customized": True,
+                "accuracy": result,
+                "performance": {"status": "NotFound", "data": {}, "test_case": "mrg32k3a_raw32"},
+            }
+        }
+    )["MRG32K3A"]["accuracy"]
+    assert summary["status"] == "Failed"
+    assert summary["passed"] == summary["total"] == 1
+    assert summary["details"] == {"process_exit": {"exit_code=86": ["mrg32k3a_raw32"]}}
 
 
 def test_acceptance_profile_is_translated_for_each_backend(tmp_path) -> None:
@@ -253,11 +266,11 @@ def test_platform_capabilities_come_from_benchmark_configs() -> None:
         "normal_f32",
         "lognormal_f32",
     }
-    assert supported_operator_ids("ascend-cann900") == supported_operator_ids("thead")
     from benchmark.rng_delivery.config import OPERATORS
 
-    assert supported_operator_ids("metax") == supported_operator_ids("thead") | set(OPERATORS)
-    assert supported_operator_ids("nvidia") == supported_operator_ids("thead")
+    assert supported_operator_ids("thead") == supported_operator_ids("ascend-cann900") | set(OPERATORS)
+    assert supported_operator_ids("metax") == supported_operator_ids("thead")
+    assert supported_operator_ids("nvidia") == supported_operator_ids("ascend-cann900")
 
 
 def test_metax_platform_aliases_use_the_canonical_runner_name() -> None:

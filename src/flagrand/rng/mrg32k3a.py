@@ -6,6 +6,7 @@ The recurrence follows L'Ecuyer (1999); seed mapping is FlagRand-specific.
 
 from __future__ import annotations
 
+import math
 import struct
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -14,9 +15,10 @@ from typing import ClassVar
 import torch
 import triton
 import triton.language as tl
+from triton.runtime.driver import driver
 
-from ..runtime.compiled_launcher import CachedKernelLauncher
-from ..runtime.specialization import launch_specialization_key
+from ..runtime.compiled_launcher import CachedKernelLauncher, PreparedKernelLaunch
+from ..runtime.specialization import integer_specialization_key, launch_specialization_key
 from ._mrg32k3a_math import M1, initial_states
 from ._xorwow._binding import bind_kernel
 from ._xorwow.api import _math_module, resolve_backend
@@ -43,6 +45,32 @@ def _mrg32k3a_step(x0, x1, x2, y0, y1, y2):
 
 
 @triton.jit
+def _mrg32k3a_step_u32(x0, x1, x2, y0, y1, y2):
+    # Canonical state and M-state fit uint32. Widen before multiplication;
+    # products and high-word folds still need int64.
+    cx = tl.full((), 4294967087, tl.uint32) - x0
+    cy = tl.full((), 4294944443, tl.uint32) - y0
+    p1 = 1403580 * x1.to(tl.int64) + 810728 * cx.to(tl.int64)
+    p2 = 527612 * y2.to(tl.int64) + 1370589 * cy.to(tl.int64)
+    x = (p1 & 0xFFFFFFFF) + 209 * (p1 >> 32)
+    x = tl.where(x >= 4294967087, x - 4294967087, x).to(tl.uint32)
+    y = (p2 & 0xFFFFFFFF) + 22853 * (p2 >> 32)
+    y = (y & 0xFFFFFFFF) + 22853 * (y >> 32)
+    y = tl.where(y >= 4294944443, y - 4294944443, y).to(tl.uint32)
+    difference = x.to(tl.int64) - y.to(tl.int64)
+    z = tl.where(difference <= 0, difference + 4294967087, difference)
+    return z, x1, x2, x, y1, y2, y
+
+
+@triton.jit
+def _mrg32k3a_step_typed(x0, x1, x2, y0, y1, y2, STATE_U32: tl.constexpr):
+    if STATE_U32:
+        return _mrg32k3a_step_u32(x0, x1, x2, y0, y1, y2)
+    else:
+        return _mrg32k3a_step(x0, x1, x2, y0, y1, y2)
+
+
+@triton.jit
 def _mrg32k3a_uniform64_digits(a, b, RECIPROCAL: tl.constexpr):
     if RECIPROCAL:
         inverse = tl.full((), 1.0 / 4294967087.0, tl.float64)
@@ -52,10 +80,40 @@ def _mrg32k3a_uniform64_digits(a, b, RECIPROCAL: tl.constexpr):
 
 
 @triton.jit
-def _mrg32k3a_uniform(x0, x1, x2, y0, y1, y2, F64: tl.constexpr, RECIPROCAL: tl.constexpr = False):
-    a, x0, x1, x2, y0, y1, y2 = _mrg32k3a_step(x0, x1, x2, y0, y1, y2)
+def _mrg32k3a_residue_u32(x, y):
+    # Canonical components satisfy 0 <= x < M1 and 0 <= y < M2 < M1.
+    # uint32 wrap gives x-y+M1 when x <= y, including M1 when x == y.
+    difference = x - y
+    modulus = tl.full((), 4294967087, tl.uint32)
+    return tl.where(x > y, difference, difference + modulus)
+
+
+@triton.jit
+def _mrg32k3a_uniform64_u32_residues(x0, x1, x2, y0, y1, y2, RECIPROCAL: tl.constexpr):
+    _, a, b, c, d, e, f = _mrg32k3a_step_u32(x0, x1, x2, y0, y1, y2)
+    first = _mrg32k3a_residue_u32(c, f)
+    _, a, b, c, d, e, f = _mrg32k3a_step_u32(a, b, c, d, e, f)
+    second = _mrg32k3a_residue_u32(c, f)
+    # Keep both base-M1 digits and the original binary64 evaluation order.
+    value = _mrg32k3a_uniform64_digits(first, second, RECIPROCAL)
+    return value, a, b, c, d, e, f
+
+
+@triton.jit
+def _mrg32k3a_uniform(
+    x0,
+    x1,
+    x2,
+    y0,
+    y1,
+    y2,
+    F64: tl.constexpr,
+    RECIPROCAL: tl.constexpr = False,
+    STATE_U32: tl.constexpr = False,
+):
+    a, x0, x1, x2, y0, y1, y2 = _mrg32k3a_step_typed(x0, x1, x2, y0, y1, y2, STATE_U32)
     if F64:
-        b, x0, x1, x2, y0, y1, y2 = _mrg32k3a_step(x0, x1, x2, y0, y1, y2)
+        b, x0, x1, x2, y0, y1, y2 = _mrg32k3a_step_typed(x0, x1, x2, y0, y1, y2, STATE_U32)
         # Two base-M1 digits. Values occupy (0, 1], with binary64 rounding;
         # casting a single raw word to double would leave ~32 random bits.
         u = _mrg32k3a_uniform64_digits(a, b, RECIPROCAL)
@@ -79,6 +137,7 @@ def _build_kernel(device_math):
         REDUCED_TRIG: tl.constexpr,
         COMPACT: tl.constexpr = False,
         RECIPROCAL: tl.constexpr = False,
+        STATE_U32: tl.constexpr = False,
     ):
         slot = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         if COMPACT:
@@ -89,12 +148,15 @@ def _build_kernel(device_math):
             stream = slot
             present = stream < NSTREAMS
             first = (stream + NSTREAMS - CURSOR) % NSTREAMS
-        x0 = tl.load(STATE + stream, present, other=1).to(tl.uint32).to(tl.int64)
-        x1 = tl.load(STATE + NSTREAMS + stream, present, other=1).to(tl.uint32).to(tl.int64)
-        x2 = tl.load(STATE + 2 * NSTREAMS + stream, present, other=1).to(tl.uint32).to(tl.int64)
-        y0 = tl.load(STATE + 3 * NSTREAMS + stream, present, other=1).to(tl.uint32).to(tl.int64)
-        y1 = tl.load(STATE + 4 * NSTREAMS + stream, present, other=1).to(tl.uint32).to(tl.int64)
-        y2 = tl.load(STATE + 5 * NSTREAMS + stream, present, other=1).to(tl.uint32).to(tl.int64)
+        x0 = tl.load(STATE + stream, present, other=1).to(tl.uint32)
+        x1 = tl.load(STATE + NSTREAMS + stream, present, other=1).to(tl.uint32)
+        x2 = tl.load(STATE + 2 * NSTREAMS + stream, present, other=1).to(tl.uint32)
+        y0 = tl.load(STATE + 3 * NSTREAMS + stream, present, other=1).to(tl.uint32)
+        y1 = tl.load(STATE + 4 * NSTREAMS + stream, present, other=1).to(tl.uint32)
+        y2 = tl.load(STATE + 5 * NSTREAMS + stream, present, other=1).to(tl.uint32)
+        if not STATE_U32:
+            x0, x1, x2 = x0.to(tl.int64), x1.to(tl.int64), x2.to(tl.int64)
+            y0, y1, y2 = y0.to(tl.int64), y1.to(tl.int64), y2.to(tl.int64)
         if DISTRIBUTION >= 2:
             if F64:
                 mean = MEAN_BITS.to(tl.uint64).to(tl.float64, bitcast=True)
@@ -106,13 +168,16 @@ def _build_kernel(device_math):
             index = first + batch * NSTREAMS
             active = present & (index < N)
             if DISTRIBUTION == 0:
-                value, a, b, c, d, e, f = _mrg32k3a_step(x0, x1, x2, y0, y1, y2)
+                value, a, b, c, d, e, f = _mrg32k3a_step_typed(x0, x1, x2, y0, y1, y2, STATE_U32)
                 value = value.to(tl.uint32)
             else:
-                u1, a, b, c, d, e, f = _mrg32k3a_uniform(x0, x1, x2, y0, y1, y2, F64, RECIPROCAL)
+                if STATE_U32 and F64 and DISTRIBUTION == 1:
+                    u1, a, b, c, d, e, f = _mrg32k3a_uniform64_u32_residues(x0, x1, x2, y0, y1, y2, RECIPROCAL)
+                else:
+                    u1, a, b, c, d, e, f = _mrg32k3a_uniform(x0, x1, x2, y0, y1, y2, F64, RECIPROCAL, STATE_U32)
                 value = u1
                 if DISTRIBUTION >= 2:
-                    u2, a, b, c, d, e, f = _mrg32k3a_uniform(a, b, c, d, e, f, F64, RECIPROCAL)
+                    u2, a, b, c, d, e, f = _mrg32k3a_uniform(a, b, c, d, e, f, F64, RECIPROCAL, STATE_U32)
                     radius = device_math.sqrt(-2.0 * device_math.log(u1))
                     if F64 and REDUCED_TRIG:
                         # u2 is measured in turns and lies in (0, 1].
@@ -168,6 +233,7 @@ def _build_paired_kernel(device_math):
         HAS_SPARE: tl.constexpr,
         COMPACT: tl.constexpr = False,
         RECIPROCAL: tl.constexpr = False,
+        STATE_U32: tl.constexpr = False,
     ):
         slot = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
         pairs = tl.cdiv(N - HAS_SPARE, 2)
@@ -193,17 +259,20 @@ def _build_paired_kernel(device_math):
                 value = device_math.exp(value)
             tl.store(OUT + cache_lane, value, slot == 0)
 
-        x0 = tl.load(STATE + stream, present, other=1).to(tl.uint32).to(tl.int64)
-        x1 = tl.load(STATE + NSTREAMS + stream, present, other=1).to(tl.uint32).to(tl.int64)
-        x2 = tl.load(STATE + 2 * NSTREAMS + stream, present, other=1).to(tl.uint32).to(tl.int64)
-        y0 = tl.load(STATE + 3 * NSTREAMS + stream, present, other=1).to(tl.uint32).to(tl.int64)
-        y1 = tl.load(STATE + 4 * NSTREAMS + stream, present, other=1).to(tl.uint32).to(tl.int64)
-        y2 = tl.load(STATE + 5 * NSTREAMS + stream, present, other=1).to(tl.uint32).to(tl.int64)
+        x0 = tl.load(STATE + stream, present, other=1).to(tl.uint32)
+        x1 = tl.load(STATE + NSTREAMS + stream, present, other=1).to(tl.uint32)
+        x2 = tl.load(STATE + 2 * NSTREAMS + stream, present, other=1).to(tl.uint32)
+        y0 = tl.load(STATE + 3 * NSTREAMS + stream, present, other=1).to(tl.uint32)
+        y1 = tl.load(STATE + 4 * NSTREAMS + stream, present, other=1).to(tl.uint32)
+        y2 = tl.load(STATE + 5 * NSTREAMS + stream, present, other=1).to(tl.uint32)
+        if not STATE_U32:
+            x0, x1, x2 = x0.to(tl.int64), x1.to(tl.int64), x2.to(tl.int64)
+            y0, y1, y2 = y0.to(tl.int64), y1.to(tl.int64), y2.to(tl.int64)
         for batch in range(tl.cdiv(pairs, NSTREAMS)):
             pair = first + batch * NSTREAMS
             active = present & (pair < pairs)
-            u1, a, b, c, d, e, f = _mrg32k3a_uniform(x0, x1, x2, y0, y1, y2, F64, RECIPROCAL)
-            u2, a, b, c, d, e, f = _mrg32k3a_uniform(a, b, c, d, e, f, F64, RECIPROCAL)
+            u1, a, b, c, d, e, f = _mrg32k3a_uniform(x0, x1, x2, y0, y1, y2, F64, RECIPROCAL, STATE_U32)
+            u2, a, b, c, d, e, f = _mrg32k3a_uniform(a, b, c, d, e, f, F64, RECIPROCAL, STATE_U32)
             radius = device_math.sqrt(-2.0 * device_math.log(u1))
             if F64:
                 sine, cosine = sincos_turns(u2, True)
@@ -261,18 +330,125 @@ def _launcher(backend, paired):
     if paired:
         return CachedKernelLauncher(
             _paired_kernel(backend),
-            constexpr_names=("NSTREAMS", "BLOCK", "F64", "LOGNORMAL", "HAS_SPARE", "COMPACT", "RECIPROCAL"),
+            constexpr_names=(
+                "NSTREAMS",
+                "BLOCK",
+                "F64",
+                "LOGNORMAL",
+                "HAS_SPARE",
+                "COMPACT",
+                "RECIPROCAL",
+                "STATE_U32",
+            ),
             option_names=("num_warps",),
         )
     return CachedKernelLauncher(
         _kernel(backend, False),
-        constexpr_names=("NSTREAMS", "BLOCK", "DISTRIBUTION", "F64", "REDUCED_TRIG", "COMPACT", "RECIPROCAL"),
+        constexpr_names=(
+            "NSTREAMS",
+            "BLOCK",
+            "DISTRIBUTION",
+            "F64",
+            "REDUCED_TRIG",
+            "COMPACT",
+            "RECIPROCAL",
+            "STATE_U32",
+        ),
         option_names=("num_warps",),
     )
 
 
 def _float_bits(value, f64):
     return struct.unpack("<Q" if f64 else "<I", struct.pack("<d" if f64 else "<f", value))[0]
+
+
+def _launch_spec(backend, n, nstreams, distribution, f64, has_spare, mean, stddev, options):
+    """Construct the shared shape, parameter and constexpr portion of a call."""
+    block = int(options.get("block_size", 128))
+    reciprocal = bool(options.get("uniform_reciprocal", True))
+    state_u32 = backend == "thead"
+    default_warps = 2 if backend in ("metax", "hygon") else 4
+    warps = int(options.get("num_warps", default_warps))
+    if distribution >= 2:
+        pairs = (n - int(has_spare) + 1) // 2
+        compact = bool(options.get("compact_streams", (f64 or backend == "thead") and pairs < nstreams))
+        work = min(pairs, nstreams) if compact else nstreams
+        grid = (max(1, triton.cdiv(work, block)),)
+        constants = (nstreams, block, f64, distribution == 3, has_spare, compact, reciprocal, state_u32)
+    else:
+        compact = bool(options.get("compact_streams", backend == "thead" and n < nstreams))
+        work = min(n, nstreams) if compact else nstreams
+        grid = (triton.cdiv(work, block),)
+        constants = (nstreams, block, distribution, f64, True, compact, reciprocal, state_u32)
+    return grid, (_float_bits(mean, f64), _float_bits(stddev, f64)), constants, (warps,)
+
+
+@dataclass
+class _PreparedMrgLaunch:
+    launcher: CachedKernelLauncher
+    grid: tuple
+    n: int
+    parameters: tuple
+    constants: tuple
+    options: tuple
+    paired: bool
+    bound_launcher: PreparedKernelLaunch | None = None
+    _keys: dict = field(default_factory=dict)
+    _bindings: dict = field(default_factory=dict)
+
+    def launch(self, state, out, cursor, spare=None, spare_index=0):
+        if self.paired:
+            tensors = (state, out, spare)
+            scalars = (self.n, cursor, spare_index) + self.parameters
+            dynamic = (integer_specialization_key(cursor), integer_specialization_key(spare_index))
+        else:
+            tensors = (state, out)
+            scalars = (self.n, cursor) + self.parameters
+            dynamic = (integer_specialization_key(cursor),)
+        arguments = tensors + scalars
+        signatures = ((state.dtype, state.data_ptr() % 16 == 0), (out.dtype, out.data_ptr() % 16 == 0))
+        if self.paired:
+            signatures += ((spare.dtype, spare.data_ptr() % 16 == 0),)
+        debug = self.launcher._kernel.debug
+        signature = (driver.active.get_current_device(), signatures, dynamic, debug)
+        key = self._keys.get(signature)
+        if key is None:
+            key = launch_specialization_key(
+                arguments, len(tensors), self.constants, self.options, debug, tensor_signatures=signatures
+            )
+            self._keys[signature] = key
+        # Cursor, spare index and pointers remain runtime arguments. The
+        # existing launcher resolves each call's stream and runtime modes.
+        if self.bound_launcher is not None:
+            # Cursor and spare-index specializations recur across calls. Keep
+            # their prepared entries so switching signatures does not rebind.
+            binding = self._bindings.get(signature)
+            if binding is None:
+                binding = self.launcher.prepare(self.grid)
+                self._bindings[signature] = binding
+            return binding.launch(arguments, self.constants, self.options, specialization_key=key)
+        return self.launcher.launch(self.grid, arguments, self.constants, self.options, specialization_key=key)
+
+
+@lru_cache(maxsize=128)
+def _prepared_launch(backend, device, n, nstreams, distribution, f64, has_spare, mean, mean_sign, stddev, stddev_sign):
+    # Device and signed-zero tokens belong to the cache key. Parameters are
+    # packed only on a miss; generator state is never captured by the plan.
+    grid, parameters, constants, options = _launch_spec(
+        backend, n, nstreams, distribution, f64, has_spare, mean, stddev, {}
+    )
+    paired = distribution >= 2
+    launcher = _launcher(backend, paired)
+    return _PreparedMrgLaunch(
+        launcher,
+        grid,
+        n,
+        parameters,
+        constants,
+        options,
+        paired,
+        bound_launcher=launcher.prepare(grid) if backend == "thead" else None,
+    )
 
 
 @dataclass
@@ -383,59 +559,57 @@ class Mrg32k3aGenerator:
         n = out.numel()
         if n == 0:
             return out
-        state = self.ensure_state(out.device)
-        backend = self._resolve_backend(
-            out.device, str(kwargs.get("backend", "auto")), kwargs.get("cache_backend", True)
-        )
+        device = out.device
+        state = self.ensure_state(device)
+        backend = self._resolve_backend(device, str(kwargs.get("backend", "auto")), kwargs.get("cache_backend", True))
         f64 = out.dtype == torch.float64
-        block = int(kwargs.get("block_size", 128))
-        reciprocal = bool(kwargs.get("uniform_reciprocal", True))
-        # C550 and BW1000 have 64-lane warps: two cover the default tile.
-        # Reuse the resolved backend; no additional device query is needed.
-        default_warps = 2 if backend in ("metax", "hygon") else 4
-        if distribution >= 2:
+        paired = distribution >= 2
+        has_spare = False
+        spare_index = 0
+        spare = None
+        if paired:
             if f64 not in self._normal_cache:
-                self._normal_cache[f64] = torch.empty(2, dtype=out.dtype, device=out.device)
+                self._normal_cache[f64] = torch.empty(2, dtype=out.dtype, device=device)
+            spare = self._normal_cache[f64]
             has_spare = self._normal_has_spare.get(f64, False)
             spare_index = self._normal_spare_index.get(f64, 0)
             pairs = (n - int(has_spare) + 1) // 2
-            # C550 measurements support pruning unused FP64 pair streams.
-            # Full-width calls retain the original state-to-lane mapping.
-            compact = bool(kwargs.get("compact_streams", f64 and pairs < self.nstreams))
-            work = min(pairs, self.nstreams) if compact else self.nstreams
-            grid = (max(1, triton.cdiv(work, block)),)
-            args = (
-                state,
-                out,
-                self._normal_cache[f64],
+
+        if backend == "thead" and not kwargs:
+            prepared = _prepared_launch(
+                backend,
+                device,
                 n,
-                self._cursor,
-                spare_index,
-                _float_bits(mean, f64),
-                _float_bits(stddev, f64),
+                self.nstreams,
+                distribution,
+                f64,
+                has_spare,
+                mean,
+                math.copysign(1.0, mean),
+                stddev,
+                math.copysign(1.0, stddev),
             )
-            warps = int(kwargs.get("num_warps", default_warps))
+            prepared.launch(state, out, self._cursor, spare, spare_index)
+        else:
+            grid, parameters, constants, options = _launch_spec(
+                backend, n, self.nstreams, distribution, f64, has_spare, mean, stddev, kwargs
+            )
+            if paired:
+                arguments = (state, out, spare, n, self._cursor, spare_index) + parameters
+            else:
+                arguments = (state, out, n, self._cursor) + parameters
+            launch = _launcher(backend, paired)
             if kwargs.get("cached_launch", True):
-                launch = _launcher(backend, True)
-                constants = (self.nstreams, block, f64, distribution == 3, has_spare, compact, reciprocal)
                 key = (
-                    launch_specialization_key(args, 3, constants, (warps,), launch._kernel.debug)
+                    launch_specialization_key(arguments, 3 if paired else 2, constants, options, launch._kernel.debug)
                     if kwargs.get("keyed_launch", True)
                     else None
                 )
-                launch.launch(grid, args, constants, (warps,), specialization_key=key)
+                launch.launch(grid, arguments, constants, options, specialization_key=key)
             else:
-                _paired_kernel(backend)[grid](
-                    *args,
-                    NSTREAMS=self.nstreams,
-                    BLOCK=block,
-                    F64=f64,
-                    LOGNORMAL=distribution == 3,
-                    HAS_SPARE=has_spare,
-                    COMPACT=compact,
-                    RECIPROCAL=reciprocal,
-                    num_warps=warps,
-                )
+                constexpr = dict(zip(launch._constexpr_names, constants))
+                launch._kernel[grid](*arguments, **constexpr, num_warps=options[0])
+        if paired:
             has_new_spare = (n - int(has_spare)) % 2 != 0
             self._normal_has_spare[f64] = has_new_spare
             if has_new_spare:
@@ -444,32 +618,6 @@ class Mrg32k3aGenerator:
             self._state_offset = self.offset
             self._cursor = (self._cursor + pairs) % self.nstreams
             return out
-        compact = bool(kwargs.get("compact_streams", False))
-        work = min(n, self.nstreams) if compact else self.nstreams
-        grid = (triton.cdiv(work, block),)
-        args = (state, out, n, self._cursor, _float_bits(mean, f64), _float_bits(stddev, f64))
-        warps = int(kwargs.get("num_warps", default_warps))
-        if kwargs.get("cached_launch", True):
-            launch = _launcher(backend, False)
-            constants = (self.nstreams, block, distribution, f64, True, compact, reciprocal)
-            key = (
-                launch_specialization_key(args, 2, constants, (warps,), launch._kernel.debug)
-                if kwargs.get("keyed_launch", True)
-                else None
-            )
-            launch.launch(grid, args, constants, (warps,), specialization_key=key)
-        else:
-            _kernel(backend, False)[grid](
-                *args,
-                NSTREAMS=self.nstreams,
-                BLOCK=block,
-                DISTRIBUTION=distribution,
-                F64=f64,
-                REDUCED_TRIG=True,
-                COMPACT=compact,
-                RECIPROCAL=reciprocal,
-                num_warps=warps,
-            )
         consumed = (2 if f64 else 1) * (2 if distribution >= 2 else 1) if distribution else 1
         self.offset += n * consumed
         self._state_offset = self.offset

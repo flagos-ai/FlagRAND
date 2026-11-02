@@ -7,6 +7,7 @@ not cuRAND's initialization or sequence-jump scheme.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from functools import lru_cache
 
@@ -14,7 +15,7 @@ import torch
 
 from ._xorwow.api import create_state
 from ._xorwow.api import generate as generate_state
-from ._xorwow.api import resolve_backend
+from ._xorwow.api import prepare_standard_launch, resolve_backend
 from ._xorwow.profiles import launch_profile
 from ._xorwow.two_stage import generate_two_stage, supports_two_stage
 
@@ -25,6 +26,16 @@ def _launch_context(requested_backend, device, n, distribution, dtype):
     backend = resolve_backend(requested_backend, device)
     config = {} if backend == "cuda" else launch_profile(backend, n, distribution, dtype)["config"]
     return backend, config
+
+
+@lru_cache(maxsize=128)
+def _prepared_launch_context(device, n, nstreams, distribution, dtype, mean, mean_sign, stddev, stddev_sign):
+    # Signed-zero tokens prevent numeric equality from merging distinct IEEE
+    # parameters; float bits are constructed only when preparing a new plan.
+    backend, config = _launch_context("auto", device, n, distribution, dtype)
+    if backend != "thead" or supports_two_stage(backend, n, nstreams, distribution, dtype, config):
+        return None
+    return prepare_standard_launch(n, nstreams, distribution, dtype, mean, stddev, backend, **config)
 
 
 @dataclass
@@ -161,30 +172,46 @@ class XorwowGenerator:
         n = out.numel()
         if n == 0:
             return out
-        options = dict(kwargs)
-        backend, base_config = _launch_context(
-            str(options.pop("backend", "auto")), out.device, n, distribution, out.dtype
-        )
-        state = self.ensure_state(out.device, backend=backend)
-        config = dict(base_config)
-        if "block_size" in options:
-            options["block"] = options.pop("block_size")
-        config.update(options)
-        if not options and supports_two_stage(backend, n, self.nstreams, distribution, out.dtype, config):
-            workspace = self._distribution_workspace(n, state.device)
-            generate_two_stage(state, out, workspace, distribution, mean, stddev)
-        else:
-            generate_state(
-                state,
+        prepared = None
+        if not kwargs:
+            prepared = _prepared_launch_context(
+                out.device,
                 n,
-                distribution=distribution,
-                dtype=out.dtype,
-                mu=mean,
-                sigma=stddev,
-                out=out,
-                backend=backend,
-                **config,
+                self.nstreams,
+                distribution,
+                out.dtype,
+                mean,
+                math.copysign(1.0, mean),
+                stddev,
+                math.copysign(1.0, stddev),
             )
+        if prepared is not None:
+            prepared.launch(self.ensure_state(out.device, backend="thead"), out)
+        else:
+            options = dict(kwargs)
+            backend, base_config = _launch_context(
+                str(options.pop("backend", "auto")), out.device, n, distribution, out.dtype
+            )
+            state = self.ensure_state(out.device, backend=backend)
+            config = dict(base_config)
+            if "block_size" in options:
+                options["block"] = options.pop("block_size")
+            config.update(options)
+            if not options and supports_two_stage(backend, n, self.nstreams, distribution, out.dtype, config):
+                workspace = self._distribution_workspace(n, state.device)
+                generate_two_stage(state, out, workspace, distribution, mean, stddev, backend=backend)
+            else:
+                generate_state(
+                    state,
+                    n,
+                    distribution=distribution,
+                    dtype=out.dtype,
+                    mu=mean,
+                    sigma=stddev,
+                    out=out,
+                    backend=backend,
+                    **config,
+                )
         if distribution in ("normal", "lognormal"):
             rows, tail = divmod(n, 2 * self.nstreams)
             pairs = rows * self.nstreams + min(tail, self.nstreams)

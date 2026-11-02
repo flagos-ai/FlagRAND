@@ -104,9 +104,7 @@ def build_performance_statistics(api_results: dict[str, dict[str, Any]]) -> dict
     result = {}
     for name, family in _aggregate_families(api_results).items():
         performance = family["performance"]
-        result[name] = {
-            key: value for key, value in performance.items() if key not in {"status", "data", "test_case"}
-        }
+        result[name] = {key: value for key, value in performance.items() if key not in {"status", "data", "test_case"}}
         result[name]["dtypes"] = {
             dtype: {
                 "geometric_mean": item.get("geometric_mean"),
@@ -135,6 +133,7 @@ def _aggregate_family_result(name, api_results, expected_operators):
     accuracy = _aggregate_accuracy([result["accuracy"] for _, result in api_results])
     data = {}
     api_means = {}
+    api_complete = {}
     statuses = []
     complete_shapes = True
     for operator, result in api_results:
@@ -148,6 +147,11 @@ def _aggregate_family_result(name, api_results, expected_operators):
                 target["details"][f"{operator}:{shape}"] = point
                 ratios.append(float(point["speedup"]))
         api_means[operator] = math.exp(sum(map(math.log, ratios)) / len(ratios)) if ratios else None
+        api_complete[operator] = (
+            performance.get("complete_shape_set", True)
+            and performance["status"] == "Passed"
+            and api_means[operator] is not None
+        )
     for item in data.values():
         ratios = [float(point["speedup"]) for point in item["details"].values()]
         if ratios:
@@ -181,13 +185,14 @@ def _aggregate_family_result(name, api_results, expected_operators):
             "test_case": name,
             "aggregation": "speedup: arithmetic over recorded points; geometric_mean: equal weight per API",
             "api_geometric_means": api_means,
+            "api_complete": api_complete,
             "geometric_mean": overall,
             "complete_api_family": complete,
             "expected_apis": list(expected_operators),
             "observed_apis": list(api_means),
             "target_geometric_mean": 0.95,
             "target_scope": "each API geometric mean; Poisson includes all configured lambda-shape pairs",
-            "api_meets_target": {op: value >= 0.95 if value is not None else None for op, value in api_means.items()},
+            "api_meets_target": {op: value >= 0.95 if api_complete[op] else None for op, value in api_means.items()},
             "meets_target": all(value >= 0.95 for value in api_means.values()) if complete else None,
         },
     }

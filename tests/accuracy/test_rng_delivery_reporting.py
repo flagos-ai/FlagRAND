@@ -80,7 +80,13 @@ def test_family_geometric_mean_weights_poisson_once():
     assert summary["data"]["int32"]["speedup"] == 16.5 / 12
     assert result["dtypes"]["int32"]["shape_parameter_count"] == 12
     api_results["mtgp32_raw32"]["performance"]["complete_shape_set"] = False
-    assert build_performance_statistics(api_results)["MTGP32"]["geometric_mean"] is None
+    incomplete = build_performance_statistics(api_results)["MTGP32"]
+    assert incomplete["geometric_mean"] is None
+    assert incomplete["api_geometric_means"]["mtgp32_raw32"] == 2.0
+    assert incomplete["api_complete"]["mtgp32_raw32"] is False
+    assert incomplete["api_meets_target"]["mtgp32_raw32"] is None
+    api_results["mtgp32_uniform_f32"]["performance"]["status"] = "Skipped"
+    assert build_performance_statistics(api_results)["MTGP32"]["api_meets_target"]["mtgp32_uniform_f32"] is None
 
 
 def test_family_summary_fields_match_philox_and_keep_all_parameter_points():
