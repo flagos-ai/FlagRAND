@@ -167,14 +167,26 @@ def generate_poisson(engine, out, lam: float, *, block_size=None, num_warps=None
         engine.offset += 2 * n
         engine._state_offset = engine.offset
         engine._cursor = (engine._cursor + 2 * n) % engine.nstreams
-    elif isinstance(engine, Mrg32k3aGenerator) and engine.nstreams % 2 == 0 and n <= 262144:
+    elif (
+        isinstance(engine, Mrg32k3aGenerator)
+        and engine.nstreams % 2 == 0
+        and (n <= 262144 or get_vendor_info().vendor_name == "hygon")
+    ):
         # Fusion removes a launch for short/medium calls. The C550 comparison
         # found the separate raw kernel faster at 1M/4M outputs, so retain it
         # above the measured 262144-output crossover region (32768 streams).
         from flagrand.fused._internal.mrg32k3a_poisson import launch_mrg32k3a_poisson
 
         launch_mrg32k3a_poisson(
-            engine, out, threshold, aliases, first, size, block_size=block_size // 2, num_warps=num_warps
+            engine,
+            out,
+            threshold,
+            aliases,
+            first,
+            size,
+            block_size=block_size // 2,
+            num_warps=2 if get_vendor_info().vendor_name == "hygon" and requested_warps is None else num_warps,
+            capture=_capture,
         )
         engine.offset += 2 * n
         engine._state_offset = engine.offset

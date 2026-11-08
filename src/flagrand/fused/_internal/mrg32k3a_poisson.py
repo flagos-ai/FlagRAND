@@ -111,12 +111,22 @@ def _prepared_launch(device, n, nstreams, first, size, block_size, num_warps):
     return _PreparedPoissonLaunch(_launcher(), grid, n, (nstreams, first, size, block_size, True), (num_warps,))
 
 
-def launch_mrg32k3a_poisson(engine, out, threshold, aliases, first, size, block_size=128, num_warps=4):
+def launch_mrg32k3a_poisson(engine, out, threshold, aliases, first, size, block_size=128, num_warps=4, *, capture=None):
     state = engine.ensure_state(out.device)
     n = out.numel()
     if get_vendor_info().vendor_name == "thead":
         prepared = _prepared_launch(out.device, n, engine.nstreams, first, size, block_size, num_warps)
         prepared.launch(state, out, threshold, aliases, engine._cursor)
+        return out
+    if get_vendor_info().vendor_name == "hygon":
+        launcher = _launcher()
+        grid = (triton.cdiv(min(n, engine.nstreams // 2), block_size),)
+        args = (state, out, threshold, aliases, n, engine._cursor)
+        constants = (engine.nstreams, first, size, block_size, True)
+        options = (num_warps,)
+        compiled = launcher.launch(grid, args, constants, options)
+        if capture is not None:
+            capture(launcher, grid, args, constants, options, compiled)
         return out
     _mrg32k3a_poisson[(triton.cdiv(min(n, engine.nstreams // 2), block_size),)](
         state,

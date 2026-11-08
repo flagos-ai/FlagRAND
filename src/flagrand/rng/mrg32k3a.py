@@ -27,6 +27,9 @@ from ._xorwow.api import _math_module, resolve_backend
 from ._xorwow.native_math import sincos_turns
 
 
+_hygon_generate = None
+
+
 @lru_cache(maxsize=8)
 def _seed_tensor(seed, nstreams, offset):
     return torch.tensor(initial_states(seed, nstreams, offset), dtype=torch.int32, device="cpu")
@@ -383,7 +386,7 @@ def _launch_spec(backend, n, nstreams, distribution, f64, has_spare, mean, stdde
     if corex_f32:
         active_streams = (n - int(has_spare) + 1) // 2 if distribution >= 2 else n
         corex_small = active_streams < nstreams
-    state_u32 = backend == "thead"
+    state_u32 = backend in ("thead", "hygon")
     if backend == "iluvatar":
         state_u32 = bool(options.get("state_u32", corex_f32 and not corex_small))
     default_warps = 2 if backend in ("metax", "hygon") else 4
@@ -573,7 +576,14 @@ class Mrg32k3aGenerator:
             self._backend_device = device
         return self._auto_backend
 
-    _generate = generate_hot
+    def _generate(self, out, distribution, **kwargs):
+        if self._auto_backend == "hygon":
+            global _hygon_generate
+            if _hygon_generate is None:
+                from ._mrg32k3a_hygon import generate as _hygon_generate
+
+            return _hygon_generate(self, out, distribution, **kwargs)
+        return generate_hot(self, out, distribution, **kwargs)
 
     def _generate_slow(self, out, distribution, *, seed=None, offset=None, mean=0.0, stddev=1.0, **kwargs):
         if seed is not None or offset is not None:
@@ -587,6 +597,10 @@ class Mrg32k3aGenerator:
         device = out.device
         state = self.ensure_state(device)
         backend = self._resolve_backend(device, str(kwargs.get("backend", "auto")), kwargs.get("cache_backend", True))
+        if backend == "hygon" and not kwargs:
+            from ._mrg32k3a_hygon import generate
+
+            return generate(self, out, distribution, mean=mean, stddev=stddev)
         f64 = out.dtype == torch.float64
         paired = distribution >= 2
         has_spare = False
