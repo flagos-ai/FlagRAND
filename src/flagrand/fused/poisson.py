@@ -11,7 +11,7 @@ import triton.language as tl
 
 from flagrand.rng._poisson_table import poisson_alias_table
 from flagrand.rng.mrg32k3a import Mrg32k3aGenerator
-from flagrand.rng.mtgp32 import Mtgp32Generator
+from flagrand.rng.mtgp32 import Mtgp32Generator, _generate_hygon
 from flagrand.rng.philox import PhiloxGenerator, _philox_window4
 from flagrand.rng.xorwow import XorwowGenerator
 from flagrand.runtime.backend import get_vendor_info
@@ -80,6 +80,16 @@ def generate_poisson(engine, out, lam: float, *, block_size=None, num_warps=None
     n = out.numel()
     if not n:
         return out
+    if (
+        isinstance(engine, Mtgp32Generator)
+        and fused_mtgp32
+        and requested_warps is None
+        and requested_block_size is None
+        and _capture is None
+        and get_vendor_info().vendor_name == "hygon"
+        and getattr(engine, "_use_buffered", True)
+    ):
+        return _generate_hygon(engine, out, "poisson", lam=float(lam))
     if (
         isinstance(engine, Mtgp32Generator)
         and fused_mtgp32

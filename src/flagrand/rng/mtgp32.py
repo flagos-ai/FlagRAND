@@ -17,6 +17,9 @@ PPU default calls with at most 65536 outputs use bounded raw and derived
 caches; a live raw cache continues across larger calls and distribution changes.
 Its prefetch defaults to 32 calls and at most 1048576 raw words. Aligned larger
 calls without a live cache retain the direct PPU kernels.
+Hygon small and partial calls retain raw and derived caches; prefetch targets
+256 calls, bounded by 8388608 raw words or the current request when larger,
+with at most 255 extra words for block alignment.
 Device graph replay of partial-cache operations needs work.
 """
 
@@ -37,6 +40,16 @@ from ._mtgp32_sequence import clear_chunk_cache, generate_mtgp32_contiguous
 from ._mtgp32_transforms import _uniform_kernel, build_normal_kernel, exp_finite_range
 
 _uniform_launcher = CachedKernelLauncher(_uniform_kernel, constexpr_names=("F64", "BLOCK"))
+_hygon_generate = None
+
+
+def _generate_hygon(engine, out, api="raw32", *, mean=0.0, stddev=1.0, lam=10.0):
+    global _hygon_generate
+    if _hygon_generate is None:
+        from ._mtgp32_hygon_api import generate
+
+        _hygon_generate = generate
+    return _hygon_generate(engine, out, api, mean=mean, stddev=stddev, lam=lam)
 
 
 @lru_cache(maxsize=8)
@@ -92,6 +105,10 @@ class Mtgp32Generator:
             from ._mtgp32_iluvatar_buffered import reset_buffer
 
             reset_buffer(self)
+        if getattr(self, "_hygon_mtgp_buffer", None) is not None:
+            self._hygon_mtgp_buffer.values = None
+            self._hygon_mtgp_buffer.cached_copy = None
+        self._hygon_mtgp_plan = None
 
     def _uses_iluvatar_buffer(self, n: int) -> bool:
         backend = getattr(self, "_iluvatar_backend", None)
@@ -170,6 +187,8 @@ class Mtgp32Generator:
         n = out.numel()
         if n == 0:
             return out
+        if not kwargs and get_vendor_info().vendor_name == "hygon" and getattr(self, "_use_buffered", True):
+            return _generate_hygon(self, out)
         if not kwargs and out.dtype == torch.int32 and self._uses_iluvatar_buffer(n):
             from ._mtgp32_iluvatar_buffered import generate_buffered
 
@@ -240,6 +259,8 @@ class Mtgp32Generator:
         n = out.numel()
         if n == 0:
             return out
+        if not kwargs and get_vendor_info().vendor_name == "hygon" and getattr(self, "_use_buffered", True):
+            return _generate_hygon(self, out, "uniform")
         if not kwargs and out.dtype == torch.float32 and self._uses_iluvatar_buffer(n):
             from ._mtgp32_iluvatar_buffered import generate_buffered
 
@@ -362,6 +383,8 @@ class Mtgp32Generator:
         n = out.numel()
         if n == 0:
             return out
+        if not kwargs and get_vendor_info().vendor_name == "hygon" and getattr(self, "_use_buffered", True):
+            return _generate_hygon(self, out, "lognormal" if lognormal else "normal", mean=mean, stddev=stddev)
         if not kwargs and out.dtype == torch.float32:
             vendor = getattr(self, "_normal_buffer_vendor", None)
             if vendor is None:
