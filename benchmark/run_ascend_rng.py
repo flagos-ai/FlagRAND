@@ -13,13 +13,27 @@ import torch
 import torch_npu  # noqa: F401
 
 from benchmark.ascend_910c.native import NativeCannGenerator, baseline_metadata
+from benchmark.ascend_910c.runtime import NativeRuntimeGenerator
+from benchmark.ascend_910c.runtime import baseline_metadata as runtime_metadata
 from benchmark.ascend_910c.timing import measure
 from benchmark.rng_delivery.cases import DTYPES, invoke, validate_output
 from benchmark.rng_delivery.config import OPERATORS, PROFILES, parameter_values, shapes_for, split_operator
 from flagrand import curand
 
 
-def run_case(operator, n, lam, seed, profile, build_dir, native):
+def native_configuration(api, dtype, provider):
+    distribution = api.split("_", 1)[0]
+    use_runtime = provider == "runtime" and (api == "raw32" or api.endswith("_f32"))
+    generator_type = NativeRuntimeGenerator if use_runtime else NativeCannGenerator
+    metadata = (runtime_metadata if use_runtime else baseline_metadata)(distribution, dtype)
+    metadata["requested_provider"] = provider
+    metadata["selected_provider"] = "runtime" if use_runtime else "graph"
+    if provider == "runtime" and not use_runtime:
+        metadata["selection_reason"] = "Runtime has no FP64 or Poisson entry; existing graph/ACLNN path retained"
+    return generator_type, metadata
+
+
+def run_case(operator, n, lam, seed, profile, build_dir, native, native_provider="graph"):
     engine, api = split_operator(operator)
     record = {
         "backend": "cann_native_c" if native else "flagrand_public",
@@ -31,12 +45,20 @@ def run_case(operator, n, lam, seed, profile, build_dir, native):
         "lambda": lam,
         "seed": seed,
     }
+    if native:
+        generator_type, metadata = native_configuration(api, DTYPES[api], native_provider)
+        record.update(
+            baseline_metadata=metadata,
+            native_provider_requested=native_provider,
+            native_provider=metadata["selected_provider"],
+        )
     try:
         output = torch.empty(n, dtype=DTYPES[api], device="npu")
         if native:
             distribution = api.split("_", 1)[0]
-            record["baseline_metadata"] = baseline_metadata(distribution, output.dtype)
-            with NativeCannGenerator(output, distribution, seed, lam, build_dir) as generator:
+            with generator_type(
+                output, distribution, seed, lam, Path(build_dir) / record["native_provider"]
+            ) as generator:
                 record.update(
                     library_path=generator.library_path,
                     setup_and_first_call_ms=generator.setup_and_first_call_ms,
@@ -50,10 +72,12 @@ def run_case(operator, n, lam, seed, profile, build_dir, native):
                 generator.generate()
                 generator.synchronize()
                 replay = output.cpu()
-                # ACLNN Uniform uses [from, to); graph UniformV2 follows TensorFlow's [0, 1).
+                # Keep the existing validation interval for both explicit providers.
                 record["validation"] = validate_output(first, replay, api, lam, uniform_interval="[0, 1)")
                 if distribution == "uniform":
-                    record["baseline_metadata"]["uniform_interval"] = "[0, 1)"
+                    record["baseline_metadata"]["uniform_validation_interval"] = "[0, 1)"
+                    if record["native_provider"] == "graph":
+                        record["baseline_metadata"]["uniform_interval"] = "[0, 1)"
                 if api == "raw32":
                     record["validation"]["metrics"]["low_byte_unique"] = int((first & 255).unique().numel())
                     record["validation"]["metrics"]["low_byte_zero_fraction"] = float(
@@ -100,6 +124,14 @@ def summarize(records):
     return {
         "scope": "CANN same-distribution native C APIs; no same-generator or bitstream equivalence",
         "aggregation": "equal weight per shape/lambda pair; family is equal weight per API geometric mean",
+        "native_providers_requested": sorted(
+            {row["native_provider_requested"] for row in records if row["backend"] == "cann_native_c"}
+        ),
+        "native_components": {
+            row["distribution"]: row["baseline_metadata"]
+            for row in records
+            if row["backend"] == "cann_native_c"
+        },
         "per_api": per_api,
         "per_lambda": [
             {"operator": op, "lambda": lam, "paired_cases": len(values), "geometric_mean": geometric_mean(values)}
@@ -128,6 +160,12 @@ def main():
     parser.add_argument("--lambdas", help="Optional comma-separated Poisson rates")
     parser.add_argument("--seed", type=int, default=20261020)
     parser.add_argument("--device", type=int, default=0)
+    parser.add_argument(
+        "--native-provider",
+        choices=("graph", "runtime"),
+        default="graph",
+        help="runtime uses direct random tasks for raw32/FP32; FP64 and Poisson retain graph/ACLNN",
+    )
     parser.add_argument("--results-dir", type=Path, default=Path("ascend_rng_results"))
     args = parser.parse_args()
     operators = args.distributions.split(",")
@@ -170,6 +208,11 @@ def main():
         "shape_map": shape_map,
         "lambda_map": lambda_map,
         "baseline": "CANN native C, same-distribution comparison",
+        "native_provider_requested": args.native_provider,
+        "native_components": {
+            op: native_configuration(split_operator(op)[1], DTYPES[split_operator(op)[1]], args.native_provider)[1]
+            for op in operators
+        },
         "source_sha256": {
             str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest() for path in sources
         },
@@ -182,7 +225,9 @@ def main():
                 for lam in lambda_map[op]:
                     for native in (False, True):
                         print(f"BEGIN {op} n={n} lambda={lam} native={native}", flush=True)
-                        row = run_case(op, n, lam, args.seed, profile, directory / "native-build", native)
+                        row = run_case(
+                            op, n, lam, args.seed, profile, directory / "native-build", native, args.native_provider
+                        )
                         stream.write(json.dumps(row) + "\n")
                         stream.flush()
                         records.append(row)
@@ -192,6 +237,7 @@ def main():
                                     key: row.get(key)
                                     for key in (
                                         "backend",
+                                        "native_provider",
                                         "distribution",
                                         "n",
                                         "lambda",
