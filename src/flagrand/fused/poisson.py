@@ -119,6 +119,10 @@ def generate_poisson(engine, out, lam: float, *, block_size=None, num_warps=None
             from flagrand.fused._internal.philox_poisson import launch_philox_poisson
 
             launch_philox_poisson(engine, out, threshold, aliases, first, size, block_size, num_warps, capture=_capture)
+        elif get_vendor_info().vendor_name == "hygon":
+            from flagrand.fused._internal.philox_poisson_hygon import launch_philox_poisson
+
+            launch_philox_poisson(engine, out, threshold, aliases, first, size, block_size, num_warps, capture=_capture)
         else:
             _philox_poisson[(triton.cdiv(n, 2 * block_size),)](
                 out,

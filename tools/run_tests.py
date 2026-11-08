@@ -192,8 +192,9 @@ def detect_platform() -> str:
 def supported_operator_ids(selected_platform: str) -> set[str]:
     if selected_platform == "hygon":
         from benchmark.hygon_matrix.config import ALL_DISTRIBUTIONS
+        from benchmark.rng_delivery.config import OPERATORS
 
-        return set(ALL_DISTRIBUTIONS)
+        return set(ALL_DISTRIBUTIONS) | set(OPERATORS)
     if selected_platform == "nvidia":
         from benchmark.nvidia_matrix.config import ALL_DISTRIBUTIONS
 
@@ -482,7 +483,7 @@ def _performance_command(
             "--results-dir",
             str(raw_dir),
         ]
-        if config.platform in {"thead", "iluvatar"}:
+        if config.platform in {"thead", "iluvatar", "hygon"}:
             command.extend(("--platform", config.platform))
         return command
     module = os.environ.get("FLAGRAND_PERF_MODULE", PERFORMANCE_MODULES[config.platform])

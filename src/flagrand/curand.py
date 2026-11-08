@@ -65,6 +65,8 @@ def generate_poisson(generator: CurandGenerator, out: torch.Tensor, lam: float, 
         if dispatch is None:
             if get_vendor_info().vendor_name == "iluvatar":
                 from flagrand.fused._internal.poisson_iluvatar_host import generate_poisson as dispatch
+            elif get_vendor_info().vendor_name == "hygon":
+                from flagrand.fused._internal.poisson_hygon_host import generate_poisson as dispatch
             else:
                 dispatch = False
             generator._iluvatar_poisson_dispatch = dispatch

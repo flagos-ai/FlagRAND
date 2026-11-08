@@ -11,6 +11,10 @@ from benchmark.ppu_matrix.probe import CALL_MARKER, ENV_MARKER, RESULT_MARKER
 
 @lru_cache(maxsize=None)
 def native_provider(platform, engine=None, api=None):
+    if platform == "hygon":
+        from benchmark.hygon_matrix.baseline import HiprandGenerator, hiprand_library_path, hiprand_version
+
+        return "hygon_hiprand", HiprandGenerator, hiprand_library_path, hiprand_version
     if platform == "iluvatar":
         if engine == "mrg32k3a" or api == "poisson":
             from benchmark.corex_matrix.corrected import (
@@ -42,6 +46,16 @@ def native_provider(platform, engine=None, api=None):
     from benchmark.muxi_matrix.mcrand import McrandGenerator, mcrand_library_path, mcrand_version
 
     return "mcrand", McrandGenerator, mcrand_library_path, mcrand_version
+
+
+def native_rng_type(platform, engine):
+    if platform == "hygon":
+        from benchmark.hygon_matrix.baseline import HIPRAND_TYPES
+
+        return HIPRAND_TYPES[engine]
+    from benchmark.rng_delivery.config import NATIVE_TYPES
+
+    return NATIVE_TYPES[engine]
 
 
 def native_support_row(support, engine, api):

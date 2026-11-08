@@ -134,6 +134,15 @@ def launch_xorwow_poisson(engine, out, threshold, aliases, first, size, block_si
             capture(prepared, compiled, (state, out, threshold, aliases, n), 1, None)
         return out
     grid = (triton.cdiv(min(n, engine.nstreams // 2), block_size),)
+    if get_vendor_info().vendor_name == "hygon":
+        launcher = _launcher()
+        args = (state, out, threshold, aliases, n)
+        constants = (engine.nstreams, first, size, block_size)
+        options = (num_warps,)
+        compiled = launcher.launch(grid, args, constants, options)
+        if capture is not None:
+            capture(launcher, grid, args, constants, options, compiled)
+        return out
     _xorwow_poisson[grid](
         state,
         out,

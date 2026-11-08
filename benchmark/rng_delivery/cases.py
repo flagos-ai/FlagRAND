@@ -6,8 +6,8 @@ import traceback
 import torch
 
 from benchmark.muxi_matrix.timing import measure
-from benchmark.rng_delivery.config import NATIVE_TYPES, split_operator
-from benchmark.rng_delivery.native import discover_native_support, native_provider
+from benchmark.rng_delivery.config import split_operator
+from benchmark.rng_delivery.native import discover_native_support, native_provider, native_rng_type
 from flagrand import curand
 
 DTYPES = {
@@ -133,7 +133,7 @@ def run_case(operator, n, lam, seed, profile, *, native=False, platform="metax",
         if observation["status"] != "pass":
             record.update(
                 status=observation["status"],
-                native_rng_type=NATIVE_TYPES[engine],
+                native_rng_type=native_rng_type(platform, engine),
                 reason=observation.get("reason") or observation.get("error") or observation["status"],
                 native_probe=observation,
             )
@@ -146,13 +146,13 @@ def run_case(operator, n, lam, seed, profile, *, native=False, platform="metax",
             record.update(
                 library_path=library_path(),
                 library_version=library_version(),
-                native_rng_type=NATIVE_TYPES[engine],
+                native_rng_type=native_rng_type(platform, engine),
             )
-            with generator_class(seed=seed, rng_type=NATIVE_TYPES[engine]) as generator:
+            with generator_class(seed=seed, rng_type=native_rng_type(platform, engine)) as generator:
                 generator.generate(api, output, lam=10.0 if lam is None else lam)
                 if baseline_name in {"ppu_sdk_mtgp32_device", "corex_sdk_corrected_mrg", "corex_sdk_raw_alias_poisson"}:
                     record["baseline_metadata"] = generator.metadata()
-            with generator_class(seed=seed, rng_type=NATIVE_TYPES[engine]) as generator:
+            with generator_class(seed=seed, rng_type=native_rng_type(platform, engine)) as generator:
                 generator.generate(api, replay, lam=10.0 if lam is None else lam)
         else:
             generator = curand.create_generator(engine, seed=seed)
@@ -162,7 +162,7 @@ def run_case(operator, n, lam, seed, profile, *, native=False, platform="metax",
         record["validation"] = validate_output(output, replay, api, lam)
         # Preserve timings even when correctness fails; status identifies the failure.
         if native:
-            with generator_class(seed=seed, rng_type=NATIVE_TYPES[engine]) as generator:
+            with generator_class(seed=seed, rng_type=native_rng_type(platform, engine)) as generator:
                 record.update(
                     measure(lambda: generator.generate(api, output, lam=10.0 if lam is None else lam), profile)
                 )

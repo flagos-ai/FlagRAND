@@ -20,8 +20,8 @@ from flagrand import curand
 from flagrand.runtime import current_vendor
 
 pytestmark = pytest.mark.skipif(
-    not torch.cuda.is_available() or current_vendor() not in {"metax", "thead", "iluvatar"},
-    reason="A MetaX, PPU or CoreX CUDA-compatible runtime is required",
+    not torch.cuda.is_available() or current_vendor() not in {"metax", "thead", "iluvatar", "hygon"},
+    reason="A MetaX, PPU, CoreX or Hygon CUDA-compatible runtime is required",
 )
 metax_only = pytest.mark.skipif(current_vendor() != "metax", reason="This test exercises a MetaX-specific path")
 CASES = [

@@ -20,7 +20,7 @@ from benchmark.rng_delivery.config import (
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=PROFILES, default="smoke")
-    parser.add_argument("--platform", choices=("metax", "thead", "iluvatar"), default="metax")
+    parser.add_argument("--platform", choices=("metax", "thead", "iluvatar", "hygon"), default="metax")
     parser.add_argument("--native-support", type=Path, default=os.environ.get("FLAGRAND_PPU_NATIVE_SUPPORT"))
     parser.add_argument("--distributions", default=None)
     parser.add_argument("--seed", type=int, default=20261020)
@@ -78,6 +78,8 @@ def main(argv=None):
             "conf/operators.yaml",
         )
     ]
+    if args.platform == "hygon":
+        source += sorted((root / "benchmark/hygon_matrix").glob("*.py"))
     if args.platform == "thead":
         source += sorted((root / "benchmark/ppu_matrix").glob("*.py"))
         source += sorted((root / "benchmark/ppu_matrix").glob("*.hg"))
