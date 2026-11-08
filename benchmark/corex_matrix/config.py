@@ -7,7 +7,6 @@ from pathlib import Path
 ALL_DISTRIBUTIONS = (
     "raw32",
     "uniform_f32",
-    "uniform_f64",
     "normal_f32",
     "lognormal_f32",
 )
@@ -170,6 +169,8 @@ def parse_args(project_root: Path) -> argparse.Namespace:
 
 def _parse_distributions(value: str) -> tuple[str, ...]:
     names = tuple(part.strip() for part in value.split(",") if part.strip())
+    if any(name.endswith("_f64") for name in names):
+        raise SystemExit("BI-V150 current scope excludes FP64 APIs")
     unknown = sorted(set(names) - set(ALL_DISTRIBUTIONS))
     if unknown:
         raise SystemExit(f"Unsupported CoreX distributions: {', '.join(unknown)}")

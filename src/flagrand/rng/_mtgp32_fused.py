@@ -12,6 +12,7 @@ import triton
 import triton.language as tl
 
 from flagrand.fused.poisson import _sample_alias
+from flagrand.runtime.backend import get_vendor_info
 from flagrand.runtime.compiled_launcher import CachedKernelLauncher
 from flagrand.runtime.specialization import launch_specialization_key
 
@@ -197,6 +198,12 @@ def generate_mtgp32_aligned(
             tensor_signatures=tensor_signatures,
         )
     else:
+        kernel, launcher = _mtgp32_fused_kernel, _fused_launcher
+        corex_f32 = not f64 and get_vendor_info().vendor_name == "iluvatar"
+        if corex_f32:
+            from ._mtgp32_iluvatar_fused import _iluvatar_fused_launcher, _mtgp32_iluvatar_fused_kernel
+
+            kernel, launcher = _mtgp32_iluvatar_fused_kernel, _iluvatar_fused_launcher
         fmt, integer_fmt = ("<d", "<Q") if f64 else ("<f", "<I")
         mu = struct.unpack(integer_fmt, struct.pack(fmt, mean))[0]
         sigma = struct.unpack(integer_fmt, struct.pack(fmt, stddev))[0]
@@ -217,6 +224,8 @@ def generate_mtgp32_aligned(
             out if aliases is None else aliases,
         )
         constants = (states, mode, f64, first, size, MTGP32_BLOCK_SIZE, MTGP32_STATE_MASK, MTGP32_MASK, MTGPDC_N)
+        if corex_f32:
+            constants += (linear_table,)
         options = (mtgp32_launch_warps(blocks, (blocks + states - 1) // states, num_warps), mode not in (2, 3))
         if cached_launch:
             # Key tensors precede integers; the launch preserves the kernel ABI.
@@ -228,16 +237,16 @@ def generate_mtgp32_aligned(
                 )
             key = (
                 launch_specialization_key(
-                    key_args, 9, constants, options, _mtgp32_fused_kernel.debug, tensor_signatures=tensor_signatures
+                    key_args, 9, constants, options, kernel.debug, tensor_signatures=tensor_signatures
                 )
                 if keyed_launch
                 else None
             )
-            _fused_launcher.launch((min(blocks, states),), arguments, constants, options, specialization_key=key)
+            launcher.launch((min(blocks, states),), arguments, constants, options, specialization_key=key)
         else:
-            keywords = dict(zip(_fused_launcher._constexpr_names, constants))
-            keywords.update(zip(_fused_launcher._option_names, options))
-            _mtgp32_fused_kernel[(min(blocks, states),)](*arguments, **keywords)
+            keywords = dict(zip(launcher._constexpr_names, constants))
+            keywords.update(zip(launcher._option_names, options))
+            kernel[(min(blocks, states),)](*arguments, **keywords)
     engine.offset += words
     engine._ws_next_block_start += words
     return out

@@ -1,5 +1,5 @@
 include README.md LICENSE pyproject.toml setup.sh .flake8
-recursive-include benchmark *.py
+recursive-include benchmark *.py *.hg *.cu *.cuh *.txt *.md
 recursive-include tools *.py *.sh
 recursive-include conf *.yaml
 recursive-include scripts *.sh

@@ -9,7 +9,9 @@ POISSON_ENGINES = ("philox",) + ENGINES
 OPERATORS = tuple(f"{engine}_{api}" for engine in ENGINES for api in APIS) + tuple(
     f"{engine}_poisson" for engine in POISSON_ENGINES
 )
+COREX_OPERATORS = tuple(operator for operator in OPERATORS if not operator.endswith("_f64"))
 OPERATOR_GROUPS = {engine: tuple(f"{engine}_{api}" for api in APIS + ("poisson",)) for engine in ENGINES}
+OPERATOR_GROUPS["philox"] = APIS + ("philox_poisson",)
 OPERATOR_GROUPS["poisson"] = tuple(f"{engine}_poisson" for engine in POISSON_ENGINES)
 NATIVE_TYPES = {"philox": 161, "xorwow": 101, "mrg32k3a": 121, "mtgp32": 141}
 LAMBDAS = (0.1, 1.0, 10.0, 30.0, 1000.0)

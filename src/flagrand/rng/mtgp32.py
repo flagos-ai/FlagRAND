@@ -13,6 +13,10 @@ transforms for larger calls. Partial MetaX calls retain bounded raw prefetch:
 physical ``state`` can lead logical ``offset``, so restoring a continuation
 requires the raw cache and its positions as well as the state tensor.
 Short MetaX uniform calls reuse this bounded raw cache and derived values.
+PPU default calls with at most 65536 outputs use bounded raw and derived
+caches; a live raw cache continues across larger calls and distribution changes.
+Its prefetch defaults to 32 calls and at most 1048576 raw words. Aligned larger
+calls without a live cache retain the direct PPU kernels.
 Device graph replay of partial-cache operations needs work.
 """
 
@@ -35,10 +39,14 @@ from ._mtgp32_transforms import _uniform_kernel, build_normal_kernel, exp_finite
 _uniform_launcher = CachedKernelLauncher(_uniform_kernel, constexpr_names=("F64", "BLOCK"))
 
 
-@lru_cache(maxsize=4)
-def _normal_launcher(native_log, finite_exp=False):
+@lru_cache(maxsize=8)
+def _normal_launcher(
+    native_log, finite_exp=False, ppu_fast_log=False, *, ppu_native_log64=False, ppu_native_exp64=False
+):
     return CachedKernelLauncher(
-        build_normal_kernel(native_log, finite_exp),
+        build_normal_kernel(
+            native_log, finite_exp, ppu_fast_log, ppu_native_log64=ppu_native_log64, ppu_native_exp64=ppu_native_exp64
+        ),
         constexpr_names=("F64", "LOGNORMAL", "BLOCK"),
         option_names=("num_warps", "enable_fp_fusion"),
     )
@@ -76,6 +84,63 @@ class Mtgp32Generator:
         self._working_state = None
         self._buffer_stats = None
         clear_chunk_cache(self)
+        if getattr(self, "_thead_buffer", None) is not None:
+            from ._mtgp32_thead_buffered import reset_buffer
+
+            reset_buffer(self)
+        if getattr(self, "_iluvatar_buffer", None) is not None:
+            from ._mtgp32_iluvatar_buffered import reset_buffer
+
+            reset_buffer(self)
+
+    def _uses_iluvatar_buffer(self, n: int) -> bool:
+        backend = getattr(self, "_iluvatar_backend", None)
+        if backend is None:
+            backend = get_vendor_info().vendor_name == "iluvatar"
+            self._iluvatar_backend = backend
+        return (
+            backend
+            and getattr(self, "_use_buffered", True)
+            and (n <= 65536 or getattr(self, "_chunk_cache", None) is not None)
+        )
+
+    def _uses_iluvatar_poisson_buffer(self, n: int) -> bool:
+        if self._uses_iluvatar_buffer(n):
+            return True
+        # Keep complete large blocks on the measured fused path. Cached or
+        # partial requests retain their raw stream in the Poisson buffer.
+        return (
+            self._iluvatar_backend
+            and getattr(self, "_use_buffered", True)
+            and n <= 1048577
+            and not (n >= 1048576 and n % 128 == 0 and self.offset % 256 == 0)
+        )
+
+    def _prepare_iluvatar_stream(self, device) -> None:
+        if getattr(self, "_iluvatar_buffer", None) is not None:
+            from ._mtgp32_iluvatar_buffered import prepare_stream
+
+            prepare_stream(self, device)
+
+    def _is_thead(self) -> bool:
+        backend = getattr(self, "_thead_backend", None)
+        if backend is None:
+            backend = get_vendor_info().vendor_name == "thead"
+            self._thead_backend = backend
+        return backend
+
+    def _uses_thead_buffer(self, n: int) -> bool:
+        return (
+            self._is_thead()
+            and getattr(self, "_use_buffered", True)
+            and (n <= 65536 or getattr(self, "_chunk_cache", None) is not None)
+        )
+
+    def _prepare_thead_stream(self, device) -> None:
+        if self._is_thead():
+            from ._mtgp32_thead_buffered import prepare_stream
+
+            prepare_stream(self, device)
 
     def _uses_raw_buffer(self, words: int) -> bool:
         if not getattr(self, "_use_buffered", True):
@@ -102,8 +167,19 @@ class Mtgp32Generator:
             return Mtgp32Generator(seed=int(seed)).generate(out, **kwargs)
         if int(kwargs.get("block_size", MTGP32_BLOCK_SIZE)) != MTGP32_BLOCK_SIZE:
             raise ValueError("MTGP32 requires 256 outputs per state update.")
-        if out.numel() == 0:
+        n = out.numel()
+        if n == 0:
             return out
+        if not kwargs and out.dtype == torch.int32 and self._uses_iluvatar_buffer(n):
+            from ._mtgp32_iluvatar_buffered import generate_buffered
+
+            return generate_buffered(self, out)
+        if not kwargs and out.dtype == torch.int32 and self._uses_thead_buffer(n):
+            from flagrand.rng._mtgp32_thead_buffered import generate_buffered
+
+            return generate_buffered(self, out, n=n)
+        self._prepare_thead_stream(out.device)
+        self._prepare_iluvatar_stream(out.device)
         if not kwargs and self._uses_raw_buffer(out.numel()):
             from ._mtgp32_buffered import generate_buffered
 
@@ -127,10 +203,18 @@ class Mtgp32Generator:
             return generate_mtgp32_aligned(
                 self,
                 out,
-                num_warps=int(kwargs.get("num_warps", 4 if get_vendor_info().vendor_name in ("metax", "hygon") else 8)),
+                num_warps=int(
+                    kwargs.get("num_warps", 4 if get_vendor_info().vendor_name in ("metax", "hygon", "iluvatar") else 8)
+                ),
                 cached_launch=bool(kwargs.get("cached_launch", True)),
                 keyed_launch=bool(kwargs.get("keyed_launch", True)),
-                linear_table=bool(kwargs.get("linear_table", get_vendor_info().vendor_name == "metax")),
+                linear_table=bool(
+                    kwargs.get(
+                        "linear_table",
+                        get_vendor_info().vendor_name == "metax"
+                        or (get_vendor_info().vendor_name == "iluvatar" and n >= 1048576),
+                    )
+                ),
                 cache_tensor_signature=bool(kwargs.get("cache_tensor_signature", True)),
             )
         generate_mtgp32_contiguous(
@@ -138,10 +222,16 @@ class Mtgp32Generator:
             out,
             self.seed,
             self.offset,
-            int(kwargs.get("num_warps", 4 if get_vendor_info().vendor_name in ("metax", "hygon") else 8)),
+            int(kwargs.get("num_warps", 4 if get_vendor_info().vendor_name in ("metax", "hygon", "iluvatar") else 8)),
             cached_launch=bool(kwargs.get("cached_launch", True)),
             keyed_launch=bool(kwargs.get("keyed_launch", True)),
-            linear_table=bool(kwargs.get("linear_table", get_vendor_info().vendor_name == "metax")),
+            linear_table=bool(
+                kwargs.get(
+                    "linear_table",
+                    get_vendor_info().vendor_name == "metax"
+                    or (get_vendor_info().vendor_name == "iluvatar" and n >= 1048576),
+                )
+            ),
         )
         self.offset += out.numel()
         return out
@@ -150,7 +240,39 @@ class Mtgp32Generator:
         n = out.numel()
         if n == 0:
             return out
+        if not kwargs and out.dtype == torch.float32 and self._uses_iluvatar_buffer(n):
+            from ._mtgp32_iluvatar_buffered import generate_buffered
+
+            return generate_buffered(self, out, "uniform")
+        if not kwargs and out.dtype in (torch.float32, torch.float64) and self._uses_thead_buffer(n):
+            from flagrand.rng._mtgp32_thead_buffered import generate_buffered
+
+            return generate_buffered(self, out, "uniform", n=n)
         f64 = out.dtype == torch.float64
+        if "seed" not in kwargs and "offset" not in kwargs:
+            self._prepare_thead_stream(out.device)
+            self._prepare_iluvatar_stream(out.device)
+        if (
+            f64
+            and not kwargs
+            and n >= 128
+            and n % 128 == 0
+            and self.offset % MTGP32_BLOCK_SIZE == 0
+            and getattr(self, "_chunk_cache", None) is None
+            and get_vendor_info().vendor_name == "thead"
+        ):
+            from ._mtgp32_thead_uniform64 import generate_uniform64_aligned
+
+            return generate_uniform64_aligned(self, out)
+        if f64 and not kwargs and getattr(self, "_thead_backend", False) and getattr(self, "_use_buffered", True):
+            buffer = self._thead_buffer
+            words = 2 * n
+            # Necessary pending<=256 condition; preserve custom prefetch policy.
+            if words + 256 >= min(buffer.prefetch_calls * words, buffer.max_prefetch_words) and self.offset % 2 == 0:
+                from flagrand.rng._mtgp32_thead_uniform64_tail import generate_tail
+
+                if generate_tail(self, out, n):
+                    return out
         if not kwargs and self._uses_raw_buffer(n * (2 if f64 else 1)):
             from ._mtgp32_buffered import generate_buffered
 
@@ -240,9 +362,70 @@ class Mtgp32Generator:
         n = out.numel()
         if n == 0:
             return out
+        if not kwargs and out.dtype == torch.float32:
+            vendor = getattr(self, "_normal_buffer_vendor", None)
+            if vendor is None:
+                vendor = get_vendor_info().vendor_name
+                self._normal_buffer_vendor = vendor
+            if vendor == "iluvatar":
+                if getattr(self, "_use_buffered", True) and (
+                    n <= 65536 or getattr(self, "_chunk_cache", None) is not None
+                ):
+                    from ._mtgp32_iluvatar_buffered import generate_buffered
+
+                    return generate_buffered(
+                        self, out, "lognormal" if lognormal else "normal", mean=mean, stddev=stddev
+                    )
+            elif vendor == "thead":
+                if getattr(self, "_use_buffered", True) and (
+                    n <= 65536 or getattr(self, "_chunk_cache", None) is not None
+                ):
+                    from flagrand.rng._mtgp32_thead_buffered import generate_buffered
+
+                    return generate_buffered(
+                        self, out, "lognormal" if lognormal else "normal", mean=mean, stddev=stddev, n=n
+                    )
+        if not kwargs and out.dtype == torch.float64 and self._uses_thead_buffer(n):
+            from flagrand.rng._mtgp32_thead_buffered import generate_buffered
+
+            return generate_buffered(self, out, "lognormal" if lognormal else "normal", mean=mean, stddev=stddev, n=n)
         f64 = out.dtype == torch.float64
         pairs = (n + 1) // 2
         words = pairs * (4 if f64 else 2)
+        if (
+            not kwargs
+            and out.dtype == torch.float32
+            and n > 65536
+            and words % 256 == 0
+            and self._is_thead()
+            and getattr(self, "_use_buffered", True)
+        ):
+            from flagrand.rng._mtgp32_thead_buffered import (
+                MAX_PREFETCH_WORDS,
+                PREFETCH_CALLS,
+                generate_buffered,
+            )
+
+            policy = getattr(self, "_thead_buffer", None)
+            if getattr(policy, "prefetch_calls", PREFETCH_CALLS) >= 2 and 2 * words <= getattr(
+                policy, "max_prefetch_words", MAX_PREFETCH_WORDS
+            ):
+                return generate_buffered(
+                    self, out, "lognormal" if lognormal else "normal", mean=mean, stddev=stddev, n=n
+                )
+        if (
+            not kwargs
+            and not f64
+            and n > 65536
+            and words % 256 == 0
+            and self.offset % 256 == 0
+            and getattr(self, "_chunk_cache", None) is None
+            and get_vendor_info().vendor_name == "iluvatar"
+        ):
+            from ._mtgp32_iluvatar_pairs import generate as generate_pairs
+
+            self._prepare_iluvatar_stream(out.device)
+            return generate_pairs(self, out, "lognormal" if lognormal else "normal", mean=mean, stddev=stddev)
         if not kwargs and self._uses_raw_buffer(words):
             from ._mtgp32_buffered import generate_buffered
 
@@ -300,10 +483,19 @@ class Mtgp32Generator:
         self.generate(raw, **kwargs)
         native_log = f64 and get_vendor_info().vendor_name == "metax"
         finite_exp = native_log and lognormal and exp_finite_range(mean, stddev)
+        ppu_fast_log = not f64 and self._is_thead()
+        ppu_native_log64 = f64 and self._is_thead()
+        ppu_native_exp64 = f64 and self._is_thead()
         args = (raw, out, n, _float_bits(mean, f64), _float_bits(stddev, f64))
         grid = ((pairs + 255) // 256,)
         if bool(kwargs.get("cached_launch", True)):
-            launch = _normal_launcher(native_log, finite_exp)
+            launch = _normal_launcher(
+                native_log,
+                finite_exp,
+                ppu_fast_log,
+                ppu_native_log64=ppu_native_log64,
+                ppu_native_exp64=ppu_native_exp64,
+            )
             constants, options = (f64, lognormal, 256), (4, False)
             key = (
                 launch_specialization_key(args, 2, constants, options, launch._kernel.debug)
@@ -312,7 +504,13 @@ class Mtgp32Generator:
             )
             launch.launch(grid, args, constants, options, specialization_key=key)
         else:
-            build_normal_kernel(native_log, finite_exp)[grid](
+            build_normal_kernel(
+                native_log,
+                finite_exp,
+                ppu_fast_log,
+                ppu_native_log64=ppu_native_log64,
+                ppu_native_exp64=ppu_native_exp64,
+            )[grid](
                 *args,
                 f64,
                 lognormal,

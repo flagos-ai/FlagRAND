@@ -245,6 +245,26 @@ def launch_mtgp32_contiguous(
     linear_table=False,
     tensor_signatures=None,
 ):
+    # PPU's measured shared-state region starts at 16 Mi raw words. Its
+    # original table loads outperform the four-basis form on this backend.
+    if block_count >= 65536 and num_warps == 8 and not linear_table and get_vendor_info().vendor_name == "thead":
+        from ._mtgp32_thead_shared import launch_thead_shared
+
+        return launch_thead_shared(
+            out,
+            state,
+            pos,
+            sh1,
+            sh2,
+            param,
+            temper,
+            start_block=start_block,
+            block_count=block_count,
+            num_warps=num_warps,
+            cached_launch=cached_launch,
+            keyed_launch=keyed_launch,
+            tensor_signatures=tensor_signatures,
+        )
     # Shared-state setup pays off in the measured region of at least 1M raw
     # words. Preserve the existing path for explicit alternative configurations.
     if block_count >= 4096 and num_warps == 4 and linear_table:

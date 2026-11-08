@@ -149,7 +149,9 @@ def ppu_acrand_library_path() -> str:
         value = os.environ.get(name)
         if value:
             candidates.append(value)
-    candidates.append("/usr/local/PPU_SDK/targets/x86_64-linux/lib/libacrand.so")
+    candidates.extend(
+        ("/usr/local/PPU_SDK/lib/libacrand.so", "/usr/local/PPU_SDK/targets/x86_64-linux/lib/libacrand.so")
+    )
     found = ctypes.util.find_library("acrand")
     if found:
         candidates.append(found)

@@ -2,14 +2,16 @@
 
 import math
 import struct
+from dataclasses import dataclass, field
 from functools import lru_cache
 from importlib import import_module
 
 import torch
 import triton
 import triton.language as tl
+from triton.runtime.driver import driver
 
-from ...runtime.compiled_launcher import CachedKernelLauncher
+from ...runtime.compiled_launcher import CachedKernelLauncher, PreparedKernelLaunch
 from ...runtime.specialization import launch_specialization_key
 from .kernels import build_generate_kernel
 from .reference import seed_words, signed_rows
@@ -184,6 +186,214 @@ def _soft_parameters(mu_bits, sigma_bits, device):
     return torch.tensor(words, dtype=torch.int32, device=device)
 
 
+def _launch_geometry(n, nstreams, pair, block, rounds, aligned, index32, packed):
+    use_aligned = aligned and nstreams % block == 0 and n % (nstreams * pair * rounds) == 0
+    index_limit = 2**30 if packed else 2**31
+    use_index32 = index32 and max(n + nstreams * pair * rounds, 6 * nstreams) < index_limit
+    grid = (triton.cdiv(min(nstreams, n), block),)
+    return use_aligned, use_index32, grid
+
+
+def _launch_options(backend, num_warps, num_stages, maxnreg, compiler_options):
+    launch_options = dict(num_warps=num_warps, num_stages=num_stages, enable_fp_fusion=False)
+    if backend == "kunlunxin":
+        launch_options["is_use_mask_zero"] = True
+    if maxnreg is not None:
+        launch_options["maxnreg"] = maxnreg
+    launch_options.update(compiler_options or {})
+    return launch_options
+
+
+def _standard_launch_spec(
+    n,
+    nstreams,
+    kind,
+    f64,
+    mu,
+    sigma,
+    backend,
+    block,
+    rounds,
+    math_mode,
+    use_aligned,
+    use_index32,
+    packed_uniform,
+    specialize_standard,
+    xpu_scalar_base,
+    launch_options,
+):
+    """Build the standard kernel's scalar arguments and constexpr values."""
+    launch_options = dict(launch_options)
+    kernel, math_tag = _compiled_entry(backend, kind >= 2, f64, packed_uniform)
+    if backend == "kunlunxin":
+        launch_options["XPU_SCALAR_BASE"] = xpu_scalar_base
+    musa_pi32 = backend == "mthreads" and not f64 and kind >= 2 and math_mode == "musa_pi32"
+    if musa_pi32:
+        launch_options["MUSA_PI32"] = True
+    if specialize_standard and backend == "mthreads" and kind >= 2 and mu == 0.0 and sigma == 1.0:
+        launch_options["STANDARD_PARAMS"] = True
+    scalars = (n, _float_bits(mu, f64), _float_bits(sigma, f64))
+    constants = (
+        nstreams,
+        block,
+        rounds,
+        kind,
+        f64,
+        math_tag,
+        math_mode
+        in (
+            "reduced",
+            "reduced_exp32",
+            "fast32",
+            "hcu_sfu",
+            "intrinsic32",
+            "range_log64",
+            "range_exp64",
+            "range64",
+            "reduced_sqrt64",
+            "range_exp_sqrt64",
+            "reduced_rsqrt64",
+            "range_exp_rsqrt64",
+        ),
+        use_aligned,
+        use_index32,
+        math_mode in ("fast32", "hcu_sfu", "intrinsic32") or musa_pi32,
+        backend == "hygon" and math_mode == "hcu_sfu",
+        math_mode == "intrinsic32",
+        f64 and math_mode in ("range_log64", "range64"),
+        f64 and math_mode in ("range_exp64", "range64", "range_exp_sqrt64", "range_exp_rsqrt64"),
+        math_mode == "reduced_exp32",
+        f64 and math_mode in ("reduced_sqrt64", "range_exp_sqrt64"),
+        f64 and math_mode in ("reduced_rsqrt64", "range_exp_rsqrt64"),
+        math_mode == "packed_interleave",
+    )
+    return kernel, scalars, constants, launch_options
+
+
+def _optional_constants(launch_options):
+    return tuple(launch_options.pop(name, False) for name in ("STANDARD_PARAMS", "MUSA_PI32", "XPU_SCALAR_BASE"))
+
+
+@dataclass
+class _PreparedStandardLaunch:
+    launcher: CachedKernelLauncher
+    grid: tuple
+    scalars: tuple
+    constants: tuple
+    options: tuple
+    backend: str = "thead"
+    bound_launcher: PreparedKernelLaunch | None = None
+    _signature: object = None
+    _key: object = None
+    _context_key: object = field(default_factory=object, repr=False)
+
+    def launch(self, state, out):
+        arguments = (state, out) + self.scalars
+        if self.backend == "iluvatar":
+            # This plan fixes every scalar and compiler option. Exact pointers
+            # retain the binder's result without assuming its alignment rules.
+            signature = (
+                driver.active.get_current_device(),
+                state.dtype,
+                state.data_ptr(),
+                out.dtype,
+                out.data_ptr(),
+                self.launcher._kernel.debug,
+            )
+            if signature != self._signature:
+                self._key = (self._context_key, signature)
+                self._signature = signature
+            generate.last_kernel = self.launcher.launch(
+                self.grid, arguments, self.constants, self.options, specialization_key=self._key
+            )
+            return out
+        signatures = (
+            (state.dtype, state.data_ptr() % 16 == 0),
+            (out.dtype, out.data_ptr() % 16 == 0),
+        )
+        debug = self.launcher._kernel.debug
+        signature = (driver.active.get_current_device(), signatures, debug)
+        if signature != self._signature:
+            self._key = launch_specialization_key(
+                arguments, 2, self.constants, self.options, debug, tensor_signatures=signatures
+            )
+            self._signature = signature
+        # Pointers remain dynamic; the existing launcher resolves the current
+        # stream and honors runtime hooks and portable mode on every call.
+        if self.bound_launcher is not None:
+            generate.last_kernel = self.bound_launcher.launch(
+                arguments, self.constants, self.options, specialization_key=self._key
+            )
+        else:
+            generate.last_kernel = self.launcher.launch(
+                self.grid, arguments, self.constants, self.options, specialization_key=self._key
+            )
+        return out
+
+
+def prepare_standard_launch(
+    n,
+    nstreams,
+    distribution,
+    dtype,
+    mu,
+    sigma,
+    backend,
+    *,
+    block=256,
+    num_warps=4,
+    rounds=1,
+    num_stages=1,
+    math_mode="native",
+    aligned=False,
+    index32=False,
+    maxnreg=None,
+    compiler_options=None,
+    specialize_standard=False,
+    xpu_scalar_base=False,
+):
+    """Prepare a default single-kernel path without capturing tensors.
+
+    The generator chooses this path for PPU and CoreX FP32 profiles.
+    Packed/software-f64, explicit launch overrides and two-stage calls retain
+    their existing dispatch. Flag construction is shared with generate.
+    """
+    kind = {"raw32": 0, "uniform": 1, "normal": 2, "lognormal": 3}[distribution]
+    f64 = kind != 0 and dtype == torch.float64
+    pair = 2 if kind >= 2 else 1
+    use_aligned, use_index32, grid = _launch_geometry(n, nstreams, pair, block, rounds, aligned, index32, False)
+    options = _launch_options(backend, num_warps, num_stages, maxnreg, compiler_options)
+    kernel, scalars, constants, options = _standard_launch_spec(
+        n,
+        nstreams,
+        kind,
+        f64,
+        mu,
+        sigma,
+        backend,
+        block,
+        rounds,
+        math_mode,
+        use_aligned,
+        use_index32,
+        False,
+        specialize_standard,
+        xpu_scalar_base,
+        options,
+    )
+    constants += _optional_constants(options)
+    launcher = _standard_launcher(kernel, tuple(options))
+    return _PreparedStandardLaunch(
+        launcher,
+        grid,
+        scalars,
+        constants,
+        tuple(options.values()),
+        backend=backend,
+        bound_launcher=launcher.prepare(grid) if backend == "thead" else None,
+    )
+
+
 def generate(
     state,
     n,
@@ -266,7 +476,7 @@ def generate(
     aligned and index32 enable optional lowering specializations when the
     current shape fits their index and full-batch conditions.
     The latest launched CompiledKernel is available as generate.last_kernel.
-    cached_launch reuses the standard Hygon kernel's complete specialization
+    cached_launch reuses the standard kernel's complete specialization
     through the shared runtime launcher; pass False for the ordinary JIT comparison.
     Other backend and packed/software-f64 paths keep their existing launch.
     """
@@ -289,7 +499,6 @@ def generate(
         math_mode = "soft64_xpu"
     nstreams = state.shape[1]
     pair = 2 if kind >= 2 else 1
-    use_aligned = aligned and nstreams % block == 0 and n % (nstreams * pair * rounds) == 0
     soft64 = (
         f64
         and kind >= 2
@@ -308,16 +517,9 @@ def generate(
         )
     )
     packed = soft64 or packed_uniform
-    index_limit = 2**30 if packed else 2**31
-    use_index32 = index32 and max(n + nstreams * pair * rounds, 6 * nstreams) < index_limit
+    use_aligned, use_index32, grid = _launch_geometry(n, nstreams, pair, block, rounds, aligned, index32, packed)
     kernel_out = out.view(torch.int32) if packed else out
-    grid = (triton.cdiv(min(nstreams, n), block),)
-    launch_options = dict(num_warps=num_warps, num_stages=num_stages, enable_fp_fusion=False)
-    if backend == "kunlunxin":
-        launch_options["is_use_mask_zero"] = True
-    if maxnreg is not None:
-        launch_options["maxnreg"] = maxnreg
-    launch_options.update(compiler_options or {})
+    launch_options = _launch_options(backend, num_warps, num_stages, maxnreg, compiler_options)
     if f64 and kind == 1 and math_mode == "packed_clz":
         generate.last_kernel = _corex_uniform_entry()[grid](
             state,
@@ -389,62 +591,36 @@ def generate(
             **kernel_options,
         )
         return out
-    kernel, math_tag = _compiled_entry(backend, kind >= 2, f64, packed_uniform)
-    if backend == "kunlunxin":
-        launch_options["XPU_SCALAR_BASE"] = xpu_scalar_base
-    musa_pi32 = backend == "mthreads" and not f64 and kind >= 2 and math_mode == "musa_pi32"
-    if musa_pi32:
-        launch_options["MUSA_PI32"] = True
-    if specialize_standard and backend == "mthreads" and kind >= 2 and mu == 0.0 and sigma == 1.0:
-        launch_options["STANDARD_PARAMS"] = True
-    arguments = (state, kernel_out, n, _float_bits(mu, f64), _float_bits(sigma, f64))
-    constants = (
+    kernel, scalars, constants, launch_options = _standard_launch_spec(
+        n,
         nstreams,
-        block,
-        rounds,
         kind,
         f64,
-        math_tag,
-        math_mode
-        in (
-            "reduced",
-            "reduced_exp32",
-            "fast32",
-            "hcu_sfu",
-            "intrinsic32",
-            "range_log64",
-            "range_exp64",
-            "range64",
-            "reduced_sqrt64",
-            "range_exp_sqrt64",
-            "reduced_rsqrt64",
-            "range_exp_rsqrt64",
-        ),
+        mu,
+        sigma,
+        backend,
+        block,
+        rounds,
+        math_mode,
         use_aligned,
         use_index32,
-        math_mode in ("fast32", "hcu_sfu", "intrinsic32") or musa_pi32,
-        backend == "hygon" and math_mode == "hcu_sfu",
-        math_mode == "intrinsic32",
-        f64 and math_mode in ("range_log64", "range64"),
-        f64 and math_mode in ("range_exp64", "range64", "range_exp_sqrt64", "range_exp_rsqrt64"),
-        math_mode == "reduced_exp32",
-        f64 and math_mode in ("reduced_sqrt64", "range_exp_sqrt64"),
-        f64 and math_mode in ("reduced_rsqrt64", "range_exp_rsqrt64"),
-        math_mode == "packed_interleave",
+        packed_uniform,
+        specialize_standard,
+        xpu_scalar_base,
+        launch_options,
     )
-    # Both vendor runtimes use the shared launcher and resolve the current stream on each call.
-    if cached_launch and backend in ("hygon", "metax") and not packed_uniform:
-        constants += tuple(
-            launch_options.pop(name, False)
-            for name in (
-                "STANDARD_PARAMS",
-                "MUSA_PI32",
-                "XPU_SCALAR_BASE",
-            )
-        )
+    arguments = (state, kernel_out) + scalars
+    # Reuse the compiled specialization and resolve the current stream on each call.
+    if cached_launch and backend in ("hygon", "metax", "thead", "iluvatar") and not packed_uniform:
+        constants += _optional_constants(launch_options)
         launcher = _standard_launcher(kernel, tuple(launch_options))
         option_values = tuple(launch_options.values())
-        key = launch_specialization_key(arguments, 2, constants, option_values, kernel.debug)
+        # CoreX 3.1's binder owns its scalar specialization rules.
+        key = (
+            None
+            if backend == "iluvatar"
+            else launch_specialization_key(arguments, 2, constants, option_values, kernel.debug)
+        )
         generate.last_kernel = launcher.launch(
             grid,
             arguments,

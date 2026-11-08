@@ -6,11 +6,18 @@ retains these two independent six-word states. The caller owns the scalar
 offset update; this launcher only advances device state.
 """
 
+from dataclasses import dataclass
+from functools import lru_cache
+
 import triton
 import triton.language as tl
+from triton.runtime.driver import driver
 
 from flagrand.fused.poisson import _sample_alias
 from flagrand.rng._xorwow.kernels import _next
+from flagrand.runtime.backend import get_vendor_info
+from flagrand.runtime.compiled_launcher import CachedKernelLauncher
+from flagrand.runtime.specialization import launch_specialization_key
 
 
 @triton.jit(do_not_specialize=["N"])
@@ -75,10 +82,57 @@ def _xorwow_poisson(
     tl.store(STATE + 5 * NSTREAMS + s + 1, d1.to(tl.int32, bitcast=True), present)
 
 
-def launch_xorwow_poisson(engine, out, threshold, aliases, first, size, block_size=256, num_warps=4):
+@lru_cache(None)
+def _launcher():
+    return CachedKernelLauncher(
+        _xorwow_poisson,
+        constexpr_names=("NSTREAMS", "FIRST", "SIZE", "BLOCK"),
+        option_names=("num_warps",),
+    )
+
+
+@dataclass
+class _PreparedPoissonLaunch:
+    launcher: CachedKernelLauncher
+    grid: tuple
+    n: int
+    constants: tuple
+    options: tuple
+    _signature: object = None
+    _key: object = None
+
+    def launch(self, state, out, threshold, aliases):
+        tensors = (state, out, threshold, aliases)
+        arguments = tensors + (self.n,)
+        signatures = tuple((value.dtype, value.data_ptr() % 16 == 0) for value in tensors)
+        debug = self.launcher._kernel.debug
+        signature = (driver.active.get_current_device(), signatures, debug)
+        if signature != self._signature:
+            self._key = launch_specialization_key(
+                arguments, 4, self.constants, self.options, debug, tensor_signatures=signatures
+            )
+            self._signature = signature
+        # State, output and both table pointers remain dynamic. The shared
+        # launcher retains runtime mode checks and current-stream resolution.
+        return self.launcher.launch(self.grid, arguments, self.constants, self.options, specialization_key=self._key)
+
+
+@lru_cache(maxsize=128)
+def _prepared_launch(device, n, nstreams, first, size, block_size, num_warps):
+    grid = (triton.cdiv(min(n, nstreams // 2), block_size),)
+    return _PreparedPoissonLaunch(_launcher(), grid, n, (nstreams, first, size, block_size), (num_warps,))
+
+
+def launch_xorwow_poisson(engine, out, threshold, aliases, first, size, block_size=256, num_warps=4, *, capture=None):
     """Launch for an even number of fixed XORWOW streams; do not change offset."""
     state = engine.ensure_state(out.device)
     n = out.numel()
+    if get_vendor_info().vendor_name in ("thead", "iluvatar"):
+        prepared = _prepared_launch(out.device, n, engine.nstreams, first, size, block_size, num_warps)
+        compiled = prepared.launch(state, out, threshold, aliases)
+        if capture is not None:
+            capture(prepared, compiled, (state, out, threshold, aliases, n), 1, None)
+        return out
     grid = (triton.cdiv(min(n, engine.nstreams // 2), block_size),)
     _xorwow_poisson[grid](
         state,

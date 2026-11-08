@@ -130,13 +130,20 @@ def get_ops_to_test(
     op_list_file: str | None,
     stages_arg: str,
     start: str | None,
+    selected_platform: str | None = None,
 ) -> list[dict[str, Any]]:
     by_id = {str(operator["id"]): operator for operator in catalog}
     if ops_arg:
         from benchmark.rng_delivery.config import OPERATOR_GROUPS
 
         requested = [item.strip().lstrip("_").lower() for item in ops_arg.split(",") if item.strip()]
-        ids = list(dict.fromkeys(operator for name in requested for operator in OPERATOR_GROUPS.get(name, (name,))))
+        if selected_platform == "iluvatar" and any(name.endswith("_f64") for name in requested):
+            raise ValueError("BI-V150 current scope excludes FP64 APIs; select raw32, FP32 distributions or Poisson")
+        groups = OPERATOR_GROUPS
+        if selected_platform == "iluvatar":
+            supported = supported_operator_ids(selected_platform)
+            groups = {name: tuple(op for op in values if op in supported) for name, values in groups.items()}
+        ids = list(dict.fromkeys(operator for name in requested for operator in groups.get(name, (name,))))
         return [by_id[operator_id] for operator_id in ids]
     if op_list_file:
         ids = [
@@ -144,6 +151,8 @@ def get_ops_to_test(
             for line in Path(op_list_file).read_text(encoding="utf-8").splitlines()
             if line.strip() and not line.lstrip().startswith("#")
         ]
+        if selected_platform == "iluvatar" and any(name.endswith("_f64") for name in ids):
+            raise ValueError("BI-V150 current scope excludes FP64 APIs; remove FP64 entries from the operator list")
         return [by_id[operator_id] for operator_id in ids]
 
     stages = [stage.strip() for stage in stages_arg.split(",") if stage.strip()]
@@ -152,11 +161,15 @@ def get_ops_to_test(
     unsupported = set(stages) - {"alpha", "beta", "stable", "removed"}
     if unsupported:
         raise ValueError(f"unsupported stage names: {sorted(unsupported)}")
-    return [
+    selected = [
         operator
         for operator in catalog
         if _stage_name(operator) in stages and (start is None or str(operator["id"]) >= start)
     ]
+    if selected_platform == "iluvatar":
+        supported = supported_operator_ids(selected_platform)
+        selected = [operator for operator in selected if str(operator["id"]) in supported]
+    return selected
 
 
 def detect_platform() -> str:
@@ -195,13 +208,15 @@ def supported_operator_ids(selected_platform: str) -> set[str]:
 
         return set(ALL_DISTRIBUTIONS) | set(OPERATORS)
     if selected_platform == "iluvatar":
-        from benchmark.corex_matrix.config import ALL_DISTRIBUTIONS
+        from benchmark.corex_matrix.config import COREX_CURAND_DISTRIBUTIONS
+        from benchmark.rng_delivery.config import COREX_OPERATORS
 
-        return set(ALL_DISTRIBUTIONS)
+        return set(COREX_CURAND_DISTRIBUTIONS) | set(COREX_OPERATORS)
     if selected_platform == "thead":
         from benchmark.muxi_matrix.config import ALL_DISTRIBUTIONS
+        from benchmark.rng_delivery.config import OPERATORS
 
-        return set(ALL_DISTRIBUTIONS)
+        return set(ALL_DISTRIBUTIONS) | set(OPERATORS)
     raise RuntimeError(f"unsupported FlagRAND platform: {selected_platform}")
 
 
@@ -436,7 +451,7 @@ def run_accuracy(gpu_id: int, operator: dict[str, Any], config: RunnerConfig) ->
         # Completed cases remain useful even when LLVM aborts the following case.
         # A partial list of passes cannot make the accuracy phase pass.
         result["status"] = "Timeout" if code == TIMEOUT else "Failed" if code == 1 else "Error"
-        result["details"]["process_exit"] = {"exit_code": code}
+        result["details"]["process_exit"] = {f"exit_code={code}": [operator_id]}
     result.update(
         {
             "exit_code": code,
@@ -456,7 +471,7 @@ def _performance_command(
     from benchmark.rng_delivery.config import OPERATORS
 
     if operator_id in OPERATORS:
-        return [
+        command = [
             sys.executable,
             "-m",
             "benchmark.run_rng_delivery",
@@ -467,6 +482,9 @@ def _performance_command(
             "--results-dir",
             str(raw_dir),
         ]
+        if config.platform in {"thead", "iluvatar"}:
+            command.extend(("--platform", config.platform))
+        return command
     module = os.environ.get("FLAGRAND_PERF_MODULE", PERFORMANCE_MODULES[config.platform])
     profile = config.profile
     benchmark_profile = (
@@ -607,7 +625,7 @@ def normalise_performance(operator_id: str, records: list[dict[str, Any]]) -> di
     return {operator_id: payload}
 
 
-def parse_performance_data(operator_id: str, result_file: Path) -> dict[str, Any]:
+def parse_performance_data(operator_id: str, result_file: Path, *, platform: str | None = None) -> dict[str, Any]:
     raw_data = json.loads(result_file.read_text(encoding="utf-8"))
     operator_data = raw_data[operator_id]
     result = str(operator_data.get("result", "NotFound"))
@@ -633,12 +651,23 @@ def parse_performance_data(operator_id: str, result_file: Path) -> dict[str, Any
         from benchmark.rng_delivery.config import OPERATORS
 
         if operator_id in OPERATORS:
-            geometric = math.exp(sum(map(math.log, speedups)) / len(speedups)) if speedups else None
+            mean_key = "arithmetic_mean" if platform in {"iluvatar", "thead"} else "geometric_mean"
+            mean_value = (
+                (
+                    sum(speedups) / len(speedups)
+                    if platform in {"iluvatar", "thead"}
+                    else math.exp(sum(map(math.log, speedups)) / len(speedups))
+                )
+                if speedups
+                else None
+            )
             benchmark_data[dtype].update(
-                geometric_mean=geometric,
-                shape_parameter_count=len(speedups),
-                target_geometric_mean=0.95,
-                meets_target=geometric >= 0.95 if geometric is not None else None,
+                {
+                    mean_key: mean_value,
+                    "shape_parameter_count": len(speedups),
+                    f"target_{mean_key}": 0.95,
+                    "meets_target": mean_value >= 0.95 if mean_value is not None else None,
+                }
             )
     return {
         "status": result.title(),
@@ -674,7 +703,7 @@ def run_performance(gpu_id: int, operator: dict[str, Any], config: RunnerConfig)
         "data_file": str(result_file.relative_to(config.output_dir)),
         "data": {},
     }
-    result.update(parse_performance_data(operator_id, result_file))
+    result.update(parse_performance_data(operator_id, result_file, platform=config.platform))
     from benchmark.rng_delivery.config import OPERATORS, parameter_values, shapes_for, split_operator
 
     if operator_id in OPERATORS:
@@ -763,7 +792,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--start", help="First operator ID, in lexicographic order")
     parser.add_argument("--gpus", default="0", help="Comma-separated device IDs or 'all'")
     parser.add_argument("--output-dir", help="Result directory; defaults to logs_results_<timestamp>")
-    parser.add_argument("--stages", default="stable", help="alpha,beta,stable,removed,or all")
+    parser.add_argument(
+        "--stages", default=None, help="alpha,beta,stable,removed,or all; default all on BI-V150, stable elsewhere"
+    )
     parser.add_argument("--dump-output", action="store_true", help="Save stdout/stderr for every phase")
     parser.add_argument("--color", choices=("auto", "always", "never"), default="auto")
     parser.add_argument("--timeout", type=int, default=4800, help="Timeout in seconds for each phase")
@@ -795,8 +826,9 @@ def main(argv: list[str] | None = None) -> int:
         catalog,
         ops_arg=args.ops,
         op_list_file=args.op_list_file,
-        stages_arg=args.stages,
+        stages_arg=args.stages or ("all" if selected_platform == "iluvatar" else "stable"),
         start=args.start,
+        selected_platform=selected_platform,
     )
     supported = supported_operator_ids(selected_platform)
     unsupported = [str(operator["id"]) for operator in operators if str(operator["id"]) not in supported]
@@ -829,6 +861,44 @@ def main(argv: list[str] | None = None) -> int:
     pinfo(f"Platform ... {selected_platform}")
     pinfo(f"Testing {len(operators)} operators on devices {gpu_ids} ...")
     pinfo(f"Results ... {config.output_dir}")
+
+    if selected_platform == "iluvatar" and any(
+        str(op["id"]).startswith("mrg32k3a_") or str(op["id"]).endswith("_poisson") for op in operators
+    ):
+        from benchmark.corex_matrix.corrected_build import prepare_corrected_baseline
+
+        prepare_corrected_baseline(config.output_dir / "native-build/corex-corrected")
+
+    if selected_platform == "iluvatar" and any(str(op["id"]).startswith("mtgp32_") for op in operators):
+        pinfo("Preparing the CoreX Tensor copy extension ...")
+        build_directory = config.output_dir / "native-build/corex-tensor-copy"
+        build_directory.mkdir(parents=True, exist_ok=True)
+        with (build_directory / "tensor-copy.log").open("w") as output:
+            subprocess.run(
+                [sys.executable, "-m", "flagrand.runtime.iluvatar_tensor_copy"],
+                cwd=ROOT,
+                env=worker_env(selected_platform, gpu_ids[0]),
+                stdout=output,
+                stderr=subprocess.STDOUT,
+                check=True,
+            )
+
+    if selected_platform == "thead" and any(str(op["id"]).startswith("mtgp32_") for op in operators):
+        from benchmark.ppu_matrix.build import prepare_mtgp32_baseline
+
+        build_directory = config.output_dir / "native-build/mtgp32"
+        prepare_mtgp32_baseline(build_directory)
+        pinfo("Preparing the PPU Tensor copy extension ...")
+        build_directory.mkdir(parents=True, exist_ok=True)
+        with (build_directory / "tensor-copy.log").open("w") as output:
+            subprocess.run(
+                [sys.executable, "-m", "flagrand.runtime.ppu_tensor_copy"],
+                cwd=ROOT,
+                env=worker_env(selected_platform, gpu_ids[0]),
+                stdout=output,
+                stderr=subprocess.STDOUT,
+                check=True,
+            )
 
     work_queue: Queue = Queue()
     event_queue: Queue = Queue()
@@ -874,7 +944,7 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "timestamp": final_data["timestamp"],
                 "profile": config.profile,
-                "result": build_performance_statistics(result),
+                "result": build_performance_statistics(result, platform=selected_platform),
             },
             indent=2,
             ensure_ascii=False,

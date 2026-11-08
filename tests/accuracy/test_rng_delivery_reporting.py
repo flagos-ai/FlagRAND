@@ -3,6 +3,8 @@
 import json
 import math
 
+import pytest
+
 from benchmark.rng_delivery.config import OPERATORS, parameter_values, shapes_for
 from benchmark.summary_json import aggregate_delivery_results, build_performance_statistics
 from tools.run_tests import (
@@ -80,7 +82,13 @@ def test_family_geometric_mean_weights_poisson_once():
     assert summary["data"]["int32"]["speedup"] == 16.5 / 12
     assert result["dtypes"]["int32"]["shape_parameter_count"] == 12
     api_results["mtgp32_raw32"]["performance"]["complete_shape_set"] = False
-    assert build_performance_statistics(api_results)["MTGP32"]["geometric_mean"] is None
+    incomplete = build_performance_statistics(api_results)["MTGP32"]
+    assert incomplete["geometric_mean"] is None
+    assert incomplete["api_geometric_means"]["mtgp32_raw32"] == 2.0
+    assert incomplete["api_complete"]["mtgp32_raw32"] is False
+    assert incomplete["api_meets_target"]["mtgp32_raw32"] is None
+    api_results["mtgp32_uniform_f32"]["performance"]["status"] = "Skipped"
+    assert build_performance_statistics(api_results)["MTGP32"]["api_meets_target"]["mtgp32_uniform_f32"] is None
 
 
 def test_family_summary_fields_match_philox_and_keep_all_parameter_points():
@@ -108,6 +116,8 @@ def test_family_summary_fields_match_philox_and_keep_all_parameter_points():
     philox = summary["PHILOX4_32_10"]
     philox_dtype = philox["performance"]["data"]["int32"]
     for name, operators in OPERATOR_GROUPS.items():
+        if name == "philox":
+            continue
         family = summary[name.upper()]
         assert family.keys() == philox.keys()
         assert family["accuracy"].keys() == philox["accuracy"].keys()
@@ -130,3 +140,88 @@ def test_new_api_uses_fixed_matrix_and_has_no_performance_threshold_exit(tmp_pat
     assert command[2] == "benchmark.run_rng_delivery"
     assert command[command.index("--profile") + 1] == "matrix"
     assert "--strict-acceptance" not in command
+
+
+@pytest.mark.parametrize("platform", ["iluvatar", "thead"])
+def test_platform_statistics_use_arithmetic_targets(platform):
+    from benchmark.rng_delivery.config import COREX_OPERATORS
+
+    operators = COREX_OPERATORS if platform == "iluvatar" else OPERATORS
+    api_results = {}
+    for api in operators:
+        dtype = "fp64" if api.endswith("f64") else "fp32" if api.endswith("f32") else "int32"
+        api_results[api] = {
+            "accuracy": {"total": 1, "passed": 1, "failed": 0, "skipped": 0, "details": {}, "status": "Passed"},
+            "performance": {
+                "status": "Passed",
+                "complete_shape_set": True,
+                "data": {
+                    dtype: {
+                        "result": "OK",
+                        "details": {
+                            "(1024,)": {"base": 0.25, "gems": 1.0, "speedup": 0.25},
+                            "(65536,)": {"base": 2.0, "gems": 1.0, "speedup": 2.0},
+                        },
+                        "speedup": 1.125,
+                    }
+                },
+            },
+        }
+    statistics = build_performance_statistics(api_results, platform=platform)
+    assert set().union(*(set(item["expected_apis"]) for item in statistics.values())) == set(operators)
+    assert len(operators) == (16 if platform == "iluvatar" else 25)
+    assert "geometric" not in json.dumps(statistics)
+    for family in statistics.values():
+        assert family["complete_api_family"] is True
+        assert family["arithmetic_mean"] == 1.125
+        assert family["target_arithmetic_mean"] == 0.95
+        assert family["meets_target"] is True
+        assert set(family["api_arithmetic_means"].values()) == {1.125}
+        assert all(family["api_meets_target"].values())
+        if platform == "iluvatar":
+            assert not any(api.endswith("_f64") for api in family["expected_apis"])
+    api_results["mtgp32_poisson"]["performance"]["complete_shape_set"] = False
+    incomplete = build_performance_statistics(api_results, platform=platform)["MTGP32"]
+    assert incomplete["arithmetic_mean"] is None
+    assert incomplete["api_arithmetic_means"]["mtgp32_poisson"] == 1.125
+    assert incomplete["api_meets_target"]["mtgp32_poisson"] is None
+    assert incomplete["meets_target"] is None
+
+
+@pytest.mark.parametrize("platform", ["iluvatar", "thead"])
+def test_api_parser_retains_lambda_rows_and_uses_arithmetic_target(tmp_path, platform):
+    records = [
+        {
+            "backend": "flagrand_public",
+            "distribution": "xorwow_poisson",
+            "dtype": "int32",
+            "n": 1024,
+            "lambda": lam,
+            "status": "pass",
+            "total_ms_median": 0.1,
+            "speedup_vs_corex_sdk_raw_alias_poisson": ratio,
+        }
+        for lam, ratio in ((0.1, 0.25), (1000, 2.0))
+    ]
+    records += [
+        {
+            "backend": "corex_sdk_raw_alias_poisson",
+            "distribution": "xorwow_poisson",
+            "dtype": "int32",
+            "n": 1024,
+            "lambda": lam,
+            "status": "pass",
+            "total_ms_median": 0.1 * ratio,
+        }
+        for lam, ratio in ((0.1, 0.25), (1000, 2.0))
+    ]
+    path = tmp_path / "performance_result.json"
+    path.write_text(json.dumps(normalise_performance("xorwow_poisson", records)))
+    item = parse_performance_data("xorwow_poisson", path, platform=platform)["data"]["int32"]
+    assert set(item["details"]) == {"(1024,);lambda=0.1", "(1024,);lambda=1000"}
+    assert item["speedup"] == item["arithmetic_mean"] == 1.125
+    assert item["meets_target"] is True
+    assert "geometric" not in json.dumps(item)
+    legacy = parse_performance_data("xorwow_poisson", path)["data"]["int32"]
+    assert math.isclose(legacy["geometric_mean"], math.sqrt(0.5))
+    assert legacy["meets_target"] is False

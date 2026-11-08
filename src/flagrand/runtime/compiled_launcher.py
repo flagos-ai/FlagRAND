@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass
+from importlib import import_module
+from types import BuiltinFunctionType
 from typing import Any
 
 try:
@@ -10,7 +12,7 @@ except ImportError:
     knobs = None
 from triton.runtime.driver import driver
 
-from flagrand.runtime.backend import supports_cached_binary_launch
+from flagrand.runtime.backend import get_vendor_info, supports_cached_binary_launch
 from flagrand.runtime.specialization import bind_specialization, find_matching_entry, value_tokens
 
 
@@ -50,6 +52,10 @@ class CachedKernelLauncher:
         self._keyed_entries: OrderedDict[object, _LaunchEntry] = OrderedDict()
         self._legacy_entries: OrderedDict[object, _LegacyLaunchEntry] = OrderedDict()
         self._legacy_keyed_entries: OrderedDict[object, _LegacyLaunchEntry] = OrderedDict()
+
+    def prepare(self, grid: int | tuple[int, ...]) -> PreparedKernelLaunch:
+        """Bind a stable grid while keeping specialization and runtime modes dynamic."""
+        return PreparedKernelLaunch(self, _normalize_grid(grid))
 
     def launch(
         self,
@@ -208,6 +214,99 @@ class CachedKernelLauncher:
         self._keyed_entries.move_to_end(key)
         while len(self._keyed_entries) > self._max_entries:
             self._keyed_entries.popitem(last=False)
+
+
+@dataclass
+class _PPUZeroScratchLaunch:
+    entry: _LaunchEntry
+    grid: tuple[int, int, int]
+    launch: Any
+    cooperative: bool
+    pdl: bool
+
+
+def _prepare_ppu_zero_scratch(entry: _LaunchEntry, grid: tuple[int, int, int]) -> _PPUZeroScratchLaunch | None:
+    if get_vendor_info().vendor_name != "thead":
+        return None
+    launcher = entry.compiled.run
+    launcher_type = import_module("triton.backends.ppu.driver").HggcLauncher
+    if (
+        isinstance(launcher, launcher_type)
+        and launcher.global_scratch_size == 0
+        and launcher.profile_scratch_size == 0
+        and isinstance(launcher.launch, BuiltinFunctionType)
+    ):
+        return _PPUZeroScratchLaunch(
+            entry, grid, launcher.launch, launcher.launch_cooperative_grid, launcher.launch_pdl
+        )
+    return None
+
+
+def _launch_ppu_zero_scratch(bound: _PPUZeroScratchLaunch, values: tuple[object, ...]) -> Any:
+    compiled = bound.entry.compiled
+    stream = driver.active.get_current_stream(bound.entry.device)
+    # HggcLauncher inserts these two flags and scratch buffers before the
+    # ordinary compiled-kernel arguments. With both scratch sizes zero, its
+    # allocators return None. Tensor conversion, context setup and the driver
+    # call stay in the same C launcher; tensor pointers are not cached.
+    bound.launch(
+        bound.grid[0],
+        bound.grid[1],
+        bound.grid[2],
+        stream,
+        compiled.function,
+        bound.cooperative,
+        bound.pdl,
+        None,
+        None,
+        compiled.packed_metadata,
+        bound.entry.launch_metadata,
+        None,
+        None,
+        *values,
+    )
+    return compiled
+
+
+class PreparedKernelLaunch:
+    """Retain one specialization without bypassing dynamic JIT modes or streams."""
+
+    def __init__(self, launcher: CachedKernelLauncher, grid: tuple[int, int, int]) -> None:
+        self._launcher = launcher
+        self._grid = grid
+        self._key: object = None
+        self._entry: _LaunchEntry | None = None
+        self._ppu_zero_scratch: _PPUZeroScratchLaunch | None = None
+
+    def launch(
+        self,
+        args: tuple[object, ...],
+        constexpr_values: tuple[object, ...],
+        option_values: tuple[object, ...],
+        *,
+        specialization_key: object,
+    ) -> Any:
+        regular = _requires_regular_jit(self._launcher._kernel)
+        if not regular and self._entry is not None and specialization_key is self._key:
+            values = args + constexpr_values
+            if self._ppu_zero_scratch is not None:
+                return _launch_ppu_zero_scratch(self._ppu_zero_scratch, values)
+            return _launch_entry(self._entry, self._grid, values)
+
+        # A mode change invalidates the binding even when the signature is
+        # unchanged. The normal launcher owns compilation and hook execution.
+        self._entry = None
+        self._ppu_zero_scratch = None
+        compiled = self._launcher.launch(
+            self._grid, args, constexpr_values, option_values, specialization_key=specialization_key
+        )
+        if not regular:
+            entry = self._launcher._keyed_entries.get(specialization_key)
+            if entry is not None:
+                self._key = specialization_key
+                self._entry = entry
+                self._ppu_zero_scratch = _prepare_ppu_zero_scratch(entry, self._grid)
+        return compiled
 
 
 def _launch_entry(

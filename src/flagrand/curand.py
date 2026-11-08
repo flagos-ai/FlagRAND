@@ -14,6 +14,7 @@ from flagrand._curand_handle import (
     set_pseudo_random_generator_seed,
 )
 from flagrand.fused.poisson import generate_poisson as _poisson
+from flagrand.runtime.backend import get_vendor_info
 
 
 def generate(generator: CurandGenerator, out: torch.Tensor, **kwargs):
@@ -59,6 +60,16 @@ def generate_lognormal_double(generator: CurandGenerator, out: torch.Tensor, *, 
 
 
 def generate_poisson(generator: CurandGenerator, out: torch.Tensor, lam: float, **kwargs):
+    if generator.rng_type != CURAND_RNG_PSEUDO_MTGP32:
+        dispatch = getattr(generator, "_iluvatar_poisson_dispatch", None)
+        if dispatch is None:
+            if get_vendor_info().vendor_name == "iluvatar":
+                from flagrand.fused._internal.poisson_iluvatar_host import generate_poisson as dispatch
+            else:
+                dispatch = False
+            generator._iluvatar_poisson_dispatch = dispatch
+        if dispatch:
+            return dispatch(generator, out, lam, **kwargs)
     return _poisson(generator.engine, out, lam, **kwargs)
 
 

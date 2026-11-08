@@ -14,6 +14,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+iluvatar = [
+    "ninja>=1.11",
+    "setuptools>=68",
+]
+ppu = [
+    "ninja>=1.11",
+    "setuptools>=68",
+]
 test = [
     "PyYAML>=6.0,<7",
     "pytest>=8.0,<10",
@@ -35,6 +43,7 @@ include = ["flagrand*"]
 
 [tool.setuptools.package-data]
 "flagrand.rng._xorwow" = ["SOURCE.md"]
+"flagrand.runtime" = ["csrc/*.cpp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/accuracy"]

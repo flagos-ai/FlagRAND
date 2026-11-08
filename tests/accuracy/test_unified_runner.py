@@ -6,6 +6,9 @@ import sys
 from pathlib import Path
 from queue import SimpleQueue
 
+import pytest
+
+from benchmark.summary_json import aggregate_delivery_results
 from tools.run_tests import (
     PLATFORM_ALIASES,
     RunnerConfig,
@@ -34,10 +37,10 @@ def test_accuracy_retains_completed_case_when_next_case_aborts(tmp_path, monkeyp
     test_file.write_text(
         """import os
 import pytest
-@pytest.mark.raw32
+@pytest.mark.mrg32k3a_raw32
 def test_00_pass():
     assert 1 == 1
-@pytest.mark.raw32
+@pytest.mark.mrg32k3a_raw32
 def test_01_abort():
     os._exit(86)
 """
@@ -46,15 +49,27 @@ def test_01_abort():
     monkeypatch.setattr(runner, "_accuracy_test_paths", lambda *_: [test_file])
     monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
     config = RunnerConfig(
-        output_dir=tmp_path / "results", platform="iluvatar", profile="acceptance", dump_output=True, timeout=30
+        output_dir=tmp_path / "results", platform="thead", profile="acceptance", dump_output=True, timeout=30
     )
-    result = run_accuracy(0, {"id": "raw32"}, config)
+    result = run_accuracy(0, {"id": "mrg32k3a_raw32"}, config)
     assert result["status"] == "Error"
     assert result["exit_code"] == 86
     assert result["passed"] == 1
     assert result["total"] == 1
     records = json.loads((config.output_dir / result["data_file"]).read_text())
     assert next(iter(records.values()))["result"] == "passed"
+    summary = aggregate_delivery_results(
+        {
+            "mrg32k3a_raw32": {
+                "customized": True,
+                "accuracy": result,
+                "performance": {"status": "NotFound", "data": {}, "test_case": "mrg32k3a_raw32"},
+            }
+        }
+    )["MRG32K3A"]["accuracy"]
+    assert summary["status"] == "Failed"
+    assert summary["passed"] == summary["total"] == 1
+    assert summary["details"] == {"process_exit": {"exit_code=86": ["mrg32k3a_raw32"]}}
 
 
 def test_acceptance_profile_is_translated_for_each_backend(tmp_path) -> None:
@@ -246,18 +261,82 @@ def test_accuracy_result_is_parsed_like_flaggems(tmp_path) -> None:
 
 
 def test_platform_capabilities_come_from_benchmark_configs() -> None:
+    from benchmark.rng_delivery.config import COREX_OPERATORS, OPERATORS
+
     assert supported_operator_ids("iluvatar") == {
         "raw32",
         "uniform_f32",
-        "uniform_f64",
         "normal_f32",
         "lognormal_f32",
-    }
-    assert supported_operator_ids("ascend-cann900") == supported_operator_ids("thead")
-    from benchmark.rng_delivery.config import OPERATORS
+    } | set(COREX_OPERATORS)
 
-    assert supported_operator_ids("metax") == supported_operator_ids("thead") | set(OPERATORS)
-    assert supported_operator_ids("nvidia") == supported_operator_ids("thead")
+    assert supported_operator_ids("thead") == supported_operator_ids("ascend-cann900") | set(OPERATORS)
+    assert supported_operator_ids("metax") == supported_operator_ids("thead")
+    assert supported_operator_ids("nvidia") == supported_operator_ids("ascend-cann900")
+
+
+def test_corex_family_selection_and_command_keep_current_16_apis(tmp_path) -> None:
+    from benchmark.rng_delivery.config import COREX_OPERATORS
+
+    selected = get_ops_to_test(
+        get_ops_from_inventory(),
+        ops_arg="xorwow,mrg32k3a,mtgp32,poisson",
+        op_list_file=None,
+        stages_arg="all",
+        start=None,
+        selected_platform="iluvatar",
+    )
+    assert {operator["id"] for operator in selected} == set(COREX_OPERATORS)
+    assert len(selected) == 16
+    default = get_ops_to_test(
+        get_ops_from_inventory(),
+        ops_arg=None,
+        op_list_file=None,
+        stages_arg="all",
+        start=None,
+        selected_platform="iluvatar",
+    )
+    assert {operator["id"] for operator in default} == supported_operator_ids("iluvatar")
+    with pytest.raises(ValueError, match="current scope excludes FP64"):
+        get_ops_to_test(
+            get_ops_from_inventory(),
+            ops_arg="mtgp32_uniform_f64",
+            op_list_file=None,
+            stages_arg="all",
+            start=None,
+            selected_platform="iluvatar",
+        )
+    config = RunnerConfig(tmp_path, "iluvatar", "acceptance", False, 30)
+    for operator in selected:
+        command = _performance_command(0, operator["id"], tmp_path, config)
+        assert command[2] == "benchmark.run_rng_delivery"
+        assert command[command.index("--platform") + 1] == "iluvatar"
+        assert command[command.index("--distributions") + 1] == operator["id"]
+        assert command[command.index("--profile") + 1] == "matrix"
+        assert [path.name for path in _accuracy_test_paths(operator, "iluvatar")] == ["test_rng_families.py"]
+
+
+@pytest.mark.parametrize("platform, count", [("iluvatar", 20), ("thead", 32)])
+def test_all_four_generator_groups_include_philox_and_keep_its_benchmark_route(tmp_path, platform, count):
+    from benchmark.rng_delivery.config import APIS, OPERATORS
+
+    selected = get_ops_to_test(
+        get_ops_from_inventory(),
+        ops_arg="philox,xorwow,mrg32k3a,mtgp32,poisson",
+        op_list_file=None,
+        stages_arg="all",
+        start=None,
+        selected_platform=platform,
+    )
+    selected_ids = {operator["id"] for operator in selected}
+    assert len(selected) == len(selected_ids) == count
+    assert selected_ids == supported_operator_ids(platform)
+    config = RunnerConfig(tmp_path, platform, "acceptance", False, 30)
+    for operator_id in selected_ids & set(APIS):
+        assert operator_id not in OPERATORS
+        command = _performance_command(0, operator_id, tmp_path, config)
+        assert command[2] == ("benchmark.run_corex" if platform == "iluvatar" else "benchmark.run_ppu")
+    assert "philox_poisson" in selected_ids
 
 
 def test_metax_platform_aliases_use_the_canonical_runner_name() -> None:

@@ -99,17 +99,18 @@ def aggregate_delivery_results(api_results: dict[str, dict[str, Any]]) -> dict[s
     return result
 
 
-def build_performance_statistics(api_results: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Keep API geometric means and family statistics alongside the Philox-format summary."""
+def build_performance_statistics(
+    api_results: dict[str, dict[str, Any]], *, platform: str | None = None
+) -> dict[str, dict[str, Any]]:
+    """Keep platform-specific API targets alongside the unchanged Philox-format summary."""
+    mean_key = "arithmetic_mean" if platform in {"iluvatar", "thead"} else "geometric_mean"
     result = {}
-    for name, family in _aggregate_families(api_results).items():
+    for name, family in _aggregate_families(api_results, platform=platform).items():
         performance = family["performance"]
-        result[name] = {
-            key: value for key, value in performance.items() if key not in {"status", "data", "test_case"}
-        }
+        result[name] = {key: value for key, value in performance.items() if key not in {"status", "data", "test_case"}}
         result[name]["dtypes"] = {
             dtype: {
-                "geometric_mean": item.get("geometric_mean"),
+                mean_key: item.get(mean_key),
                 "shape_parameter_count": len(item["details"]),
             }
             for dtype, item in performance["data"].items()
@@ -117,24 +118,32 @@ def build_performance_statistics(api_results: dict[str, dict[str, Any]]) -> dict
     return result
 
 
-def _aggregate_families(api_results: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    from benchmark.rng_delivery.config import APIS, ENGINES, POISSON_ENGINES
+def _aggregate_families(
+    api_results: dict[str, dict[str, Any]], *, platform: str | None = None
+) -> dict[str, dict[str, Any]]:
+    from benchmark.rng_delivery.config import APIS, COREX_OPERATORS, ENGINES, POISSON_ENGINES
 
     result = {}
     groups = {engine.upper(): tuple(f"{engine}_{api}" for api in APIS + ("poisson",)) for engine in ENGINES}
     groups["POISSON"] = tuple(f"{engine}_poisson" for engine in POISSON_ENGINES)
+    if platform == "iluvatar":
+        groups = {name: tuple(op for op in operators if op in COREX_OPERATORS) for name, operators in groups.items()}
     for name, operators in groups.items():
         selected = [(op, api_results[op]) for op in operators if op in api_results]
         if selected:
-            result[name] = _aggregate_family_result(name, selected, operators)
+            result[name] = _aggregate_family_result(
+                name, selected, operators, arithmetic=platform in {"iluvatar", "thead"}
+            )
     return result
 
 
-def _aggregate_family_result(name, api_results, expected_operators):
-    """Keep arithmetic speedup and add equal-API geometric means explicitly."""
+def _aggregate_family_result(name, api_results, expected_operators, *, arithmetic=False):
+    """Keep public arithmetic speedup; select the platform's separate target statistic."""
+    mean_key = "arithmetic_mean" if arithmetic else "geometric_mean"
     accuracy = _aggregate_accuracy([result["accuracy"] for _, result in api_results])
     data = {}
     api_means = {}
+    api_complete = {}
     statuses = []
     complete_shapes = True
     for operator, result in api_results:
@@ -147,14 +156,27 @@ def _aggregate_family_result(name, api_results, expected_operators):
             for shape, point in item["details"].items():
                 target["details"][f"{operator}:{shape}"] = point
                 ratios.append(float(point["speedup"]))
-        api_means[operator] = math.exp(sum(map(math.log, ratios)) / len(ratios)) if ratios else None
+        api_means[operator] = (
+            (sum(ratios) / len(ratios) if arithmetic else math.exp(sum(map(math.log, ratios)) / len(ratios)))
+            if ratios
+            else None
+        )
+        api_complete[operator] = (
+            performance.get("complete_shape_set", True)
+            and performance["status"] == "Passed"
+            and api_means[operator] is not None
+        )
     for item in data.values():
         ratios = [float(point["speedup"]) for point in item["details"].values()]
         if ratios:
             item.update(
                 result="OK",
                 speedup=sum(ratios) / len(ratios),
-                geometric_mean=math.exp(sum(map(math.log, ratios)) / len(ratios)),
+                **{
+                    mean_key: (
+                        sum(ratios) / len(ratios) if arithmetic else math.exp(sum(map(math.log, ratios)) / len(ratios))
+                    )
+                },
             )
     complete = (
         set(api_means) == set(expected_operators)
@@ -162,7 +184,15 @@ def _aggregate_family_result(name, api_results, expected_operators):
         and complete_shapes
         and all(status == "Passed" for status in statuses)
     )
-    overall = math.exp(sum(math.log(value) for value in api_means.values()) / len(api_means)) if complete else None
+    overall = (
+        (
+            sum(api_means.values()) / len(api_means)
+            if arithmetic
+            else math.exp(sum(math.log(value) for value in api_means.values()) / len(api_means))
+        )
+        if complete
+        else None
+    )
     status = (
         "Failed"
         if any(s in {"Failed", "Error", "Timeout"} for s in statuses)
@@ -179,15 +209,24 @@ def _aggregate_family_result(name, api_results, expected_operators):
             "status": status,
             "data": data,
             "test_case": name,
-            "aggregation": "speedup: arithmetic over recorded points; geometric_mean: equal weight per API",
-            "api_geometric_means": api_means,
-            "geometric_mean": overall,
+            "aggregation": (
+                "API arithmetic mean over recorded shape-parameter points; family arithmetic mean gives each API equal weight"
+                if arithmetic
+                else "speedup: arithmetic over recorded points; geometric_mean: equal weight per API"
+            ),
+            f"api_{mean_key}s": api_means,
+            "api_complete": api_complete,
+            mean_key: overall,
             "complete_api_family": complete,
             "expected_apis": list(expected_operators),
             "observed_apis": list(api_means),
-            "target_geometric_mean": 0.95,
-            "target_scope": "each API geometric mean; Poisson includes all configured lambda-shape pairs",
-            "api_meets_target": {op: value >= 0.95 if value is not None else None for op, value in api_means.items()},
+            f"target_{mean_key}": 0.95,
+            "target_scope": (
+                "each API arithmetic mean; Poisson includes all configured lambda-shape pairs"
+                if arithmetic
+                else "each API geometric mean; Poisson includes all configured lambda-shape pairs"
+            ),
+            "api_meets_target": {op: value >= 0.95 if api_complete[op] else None for op, value in api_means.items()},
             "meets_target": all(value >= 0.95 for value in api_means.values()) if complete else None,
         },
     }

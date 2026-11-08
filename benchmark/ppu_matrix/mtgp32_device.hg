@@ -1,0 +1,177 @@
+// MTGP32 SDK device functions with a host-owned stream and tail cache.
+// The SDK supplies the recurrence and distribution transforms. This is not
+// acrandGenerate: each API/parameter combination owns separate progress.
+#include <hggc_runtime.h>
+#include <hggc_library_types.h>
+using libraryPropertyType = hggcLibraryPropertyType;
+#include <hgrand_kernel.h>
+#include <hgrand_mtgp32_host.h>
+#include <cstdint>
+#include <vector>
+
+using State = hgrandStateMtgp32_t;
+constexpr unsigned kStates = 200;
+constexpr unsigned kThreads = 256;
+constexpr unsigned kCycle = kStates * kThreads;
+
+struct Context {
+    State *states;
+    mtgp32_kernel_params_t *params;
+    void *tail;
+    unsigned cursor;
+    int api;
+    double mean, stddev, lambda;
+};
+
+#define HG_RETURN(call) do { auto status = (call); if (status != hggcSuccess) return int(status); } while (0)
+#define RNG_RETURN(call) do { auto status = (call); if (status != HGRAND_STATUS_SUCCESS) return int(status); } while (0)
+
+template<int Api> struct Distribution;
+#define DISTRIBUTION(ID, TYPE, EXPR) \
+template<> struct Distribution<ID> { \
+    using Type = TYPE; \
+    static __device__ __forceinline__ Type sample(State *state, double mean, double stddev, double lambda) { \
+        return (EXPR); \
+    } \
+};
+DISTRIBUTION(0, uint32_t, hgrand(state))
+DISTRIBUTION(1, float, hgrand_uniform(state))
+DISTRIBUTION(2, double, hgrand_uniform_double(state))
+DISTRIBUTION(3, float, float(mean) + float(stddev) * hgrand_normal(state))
+DISTRIBUTION(4, double, mean + stddev * hgrand_normal_double(state))
+DISTRIBUTION(5, float, hgrand_log_normal(state, float(mean), float(stddev)))
+DISTRIBUTION(6, double, hgrand_log_normal_double(state, mean, stddev))
+DISTRIBUTION(7, uint32_t, hgrand_poisson(state, lambda))
+#undef DISTRIBUTION
+
+// The SDK initializes 351 meaningful ring entries and leaves the remaining
+// host allocation unspecified. Canonicalize unused storage for state replay;
+// these words are written by the recurrence before they are ever read.
+__global__ void initialize_unused_ring(State *states) {
+    for (unsigned i = 351 + threadIdx.x; i < 1024; i += blockDim.x)
+        states[blockIdx.x].s[i] = 0;
+}
+
+template<int Api>
+__global__ __launch_bounds__(kThreads)
+void generate_device(State *states, typename Distribution<Api>::Type *tail,
+                     typename Distribution<Api>::Type *out, uint64_t n,
+                     unsigned cursor, double mean, double stddev, double lambda) {
+    using T = typename Distribution<Api>::Type;
+    const uint64_t first_chunk = cursor / kThreads;
+    const uint64_t end = uint64_t(cursor) + n;
+    const uint64_t end_chunk = (end + kThreads - 1) / kThreads;
+    const uint64_t initial_chunk = first_chunk + blockIdx.x;
+    const unsigned state_id = unsigned(initial_chunk % kStates);
+    const unsigned lane = threadIdx.x;
+    const bool starts_cached = initial_chunk == first_chunk && cursor % kThreads != 0;
+    const bool advances_state = !starts_cached || initial_chunk + kStates < end_chunk;
+    __shared__ State local;
+    if (advances_state) {
+        for (unsigned i = lane; i < 1024; i += kThreads)
+            local.s[i] = states[state_id].s[i];
+        if (lane == 0) {
+            local.offset = states[state_id].offset;
+            local.pIdx = states[state_id].pIdx;
+            local.k = states[state_id].k;
+        }
+        __syncthreads();
+    }
+    for (uint64_t chunk = initial_chunk; chunk < end_chunk; chunk += kStates) {
+        // This decision is identical across all lanes of the CTA. In particular,
+        // lanes outside the requested tail still participate in the SDK call.
+        T value;
+        if (chunk == first_chunk && starts_cached)
+            value = tail[state_id * kThreads + lane];
+        else
+            value = Distribution<Api>::sample(&local, mean, stddev, lambda);
+        const uint64_t index = chunk * kThreads + lane;
+        if (index >= cursor && index < end)
+            out[index - cursor] = value;
+        if (chunk + 1 == end_chunk && end % kThreads != 0)
+            tail[state_id * kThreads + lane] = value;
+    }
+    if (advances_state) {
+        // SDK hgrand already finishes each round with a CTA barrier.
+        for (unsigned i = lane; i < 1024; i += kThreads)
+            states[state_id].s[i] = local.s[i];
+        if (lane == 0) states[state_id].offset = local.offset;
+    }
+}
+
+extern "C" int mtgp_device_reset(void *opaque, uint64_t seed) {
+    Context *context = static_cast<Context *>(opaque);
+    RNG_RETURN(hgrandMakeMTGP32KernelState(context->states, mtgp32dc_params_fast_11213,
+                                         context->params, kStates, seed));
+    initialize_unused_ring<<<kStates, kThreads>>>(context->states);
+    HG_RETURN(hggcGetLastError());
+    HG_RETURN(hggcDeviceSynchronize());
+    context->cursor = 0;
+    return 0;
+}
+
+extern "C" int mtgp_device_create(void **result, int api, uint64_t seed,
+                                 double mean, double stddev, double lambda) {
+    Context *context = new Context{};
+    context->api = api;
+    context->mean = mean;
+    context->stddev = stddev;
+    context->lambda = lambda;
+    HG_RETURN(hggcMalloc(reinterpret_cast<void **>(&context->states), kStates * sizeof(State)));
+    HG_RETURN(hggcMalloc(reinterpret_cast<void **>(&context->params), sizeof(mtgp32_kernel_params_t)));
+    HG_RETURN(hggcMalloc(&context->tail, kCycle * sizeof(double)));
+    RNG_RETURN(hgrandMakeMTGP32Constants(mtgp32dc_params_fast_11213, context->params));
+    *result = context;
+    return mtgp_device_reset(context, seed);
+}
+
+template<int Api>
+static void launch(Context *context, void *out, uint64_t n, hggcStream_t stream, unsigned grid) {
+    using T = typename Distribution<Api>::Type;
+    generate_device<Api><<<grid, kThreads, 0, stream>>>(context->states, static_cast<T *>(context->tail),
+        static_cast<T *>(out), n, context->cursor, context->mean, context->stddev, context->lambda);
+}
+
+extern "C" int mtgp_device_generate(void *opaque, void *out, uint64_t n, void *stream_pointer) {
+    Context *context = static_cast<Context *>(opaque);
+    if (n == 0) return 0;
+    const uint64_t chunks = (uint64_t(context->cursor % kThreads) + n + kThreads - 1) / kThreads;
+    const unsigned grid = unsigned(chunks < kStates ? chunks : kStates);
+    const auto stream = reinterpret_cast<hggcStream_t>(stream_pointer);
+    switch (context->api) {
+        case 0: launch<0>(context, out, n, stream, grid); break;
+        case 1: launch<1>(context, out, n, stream, grid); break;
+        case 2: launch<2>(context, out, n, stream, grid); break;
+        case 3: launch<3>(context, out, n, stream, grid); break;
+        case 4: launch<4>(context, out, n, stream, grid); break;
+        case 5: launch<5>(context, out, n, stream, grid); break;
+        case 6: launch<6>(context, out, n, stream, grid); break;
+        case 7: launch<7>(context, out, n, stream, grid); break;
+    }
+    HG_RETURN(hggcGetLastError());
+    context->cursor = unsigned((uint64_t(context->cursor) + n) % kCycle);
+    return 0;
+}
+
+extern "C" int mtgp_device_destroy(void *opaque) {
+    Context *context = static_cast<Context *>(opaque);
+    HG_RETURN(hggcFree(context->tail));
+    HG_RETURN(hggcFree(context->params));
+    HG_RETURN(hggcFree(context->states));
+    delete context;
+    return 0;
+}
+
+// Research observation only: not called in a timed generation path.
+extern "C" int mtgp_device_export_state(void *opaque, uint32_t *out) {
+    Context *context = static_cast<Context *>(opaque);
+    std::vector<State> states(kStates);
+    HG_RETURN(hggcMemcpy(states.data(), context->states, kStates * sizeof(State), hggcMemcpyDeviceToHost));
+    for (unsigned b = 0; b < kStates; ++b) {
+        for (unsigned i = 0; i < 1024; ++i) out[b * 1026 + i] = states[b].s[i];
+        out[b * 1026 + 1024] = unsigned(states[b].offset);
+        out[b * 1026 + 1025] = unsigned(states[b].pIdx);
+    }
+    out[kStates * 1026] = context->cursor;
+    return 0;
+}
