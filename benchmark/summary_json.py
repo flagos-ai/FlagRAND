@@ -34,6 +34,8 @@ DELIVERY_OPERATORS = (
     ("LOGNORMAL", ("lognormal_f32", "lognormal_f64")),
 )
 
+ARITHMETIC_TARGET_PLATFORMS = {"ascend", "huawei_ascend_910c", "hygon", "hygon_dtk_hip"}
+
 
 def write_summary_json(
     run_directory: Path,
@@ -70,11 +72,13 @@ def build_summary(
     return {
         "timestamp": timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "env": environment or collect_environment(manifest),
-        "result": aggregate_delivery_results(api_results),
+        "result": aggregate_delivery_results(api_results, platform=manifest["platform"]),
     }
 
 
-def aggregate_delivery_results(api_results: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def aggregate_delivery_results(
+    api_results: dict[str, dict[str, Any]], *, platform: str | None = None
+) -> dict[str, dict[str, Any]]:
     result = {
         delivery_name: _aggregate_operator_result(
             delivery_name,
@@ -82,7 +86,11 @@ def aggregate_delivery_results(api_results: dict[str, dict[str, Any]]) -> dict[s
         )
         for delivery_name, api_names in DELIVERY_OPERATORS
     }
-    for name, family in _aggregate_families(api_results).items():
+    family_platform = platform if platform in ARITHMETIC_TARGET_PLATFORMS else None
+    for name, family in _aggregate_families(api_results, platform=family_platform).items():
+        if platform in ARITHMETIC_TARGET_PLATFORMS:
+            result[name] = family
+            continue
         performance = family["performance"]
         result[name] = {
             "customized": family["customized"],
@@ -103,7 +111,9 @@ def build_performance_statistics(
     api_results: dict[str, dict[str, Any]], *, platform: str | None = None
 ) -> dict[str, dict[str, Any]]:
     """Keep platform-specific API targets alongside the unchanged Philox-format summary."""
-    mean_key = "arithmetic_mean" if platform in {"iluvatar", "thead"} else "geometric_mean"
+    mean_key = (
+        "arithmetic_mean" if platform in ARITHMETIC_TARGET_PLATFORMS | {"iluvatar", "thead"} else "geometric_mean"
+    )
     result = {}
     for name, family in _aggregate_families(api_results, platform=platform).items():
         performance = family["performance"]
@@ -132,14 +142,19 @@ def _aggregate_families(
         selected = [(op, api_results[op]) for op in operators if op in api_results]
         if selected:
             result[name] = _aggregate_family_result(
-                name, selected, operators, arithmetic=platform in {"iluvatar", "thead"}
+                name,
+                selected,
+                operators,
+                arithmetic=platform in ARITHMETIC_TARGET_PLATFORMS | {"iluvatar", "thead"},
+                strict_target=platform in ARITHMETIC_TARGET_PLATFORMS,
             )
     return result
 
 
-def _aggregate_family_result(name, api_results, expected_operators, *, arithmetic=False):
+def _aggregate_family_result(name, api_results, expected_operators, *, arithmetic=False, strict_target=False):
     """Keep public arithmetic speedup; select the platform's separate target statistic."""
     mean_key = "arithmetic_mean" if arithmetic else "geometric_mean"
+    meets_target = lambda value: value > 0.95 if strict_target else value >= 0.95
     accuracy = _aggregate_accuracy([result["accuracy"] for _, result in api_results])
     data = {}
     api_means = {}
@@ -221,13 +236,16 @@ def _aggregate_family_result(name, api_results, expected_operators, *, arithmeti
             "expected_apis": list(expected_operators),
             "observed_apis": list(api_means),
             f"target_{mean_key}": 0.95,
+            **({"target_comparison": ">"} if strict_target else {}),
             "target_scope": (
                 "each API arithmetic mean; Poisson includes all configured lambda-shape pairs"
                 if arithmetic
                 else "each API geometric mean; Poisson includes all configured lambda-shape pairs"
             ),
-            "api_meets_target": {op: value >= 0.95 if api_complete[op] else None for op, value in api_means.items()},
-            "meets_target": all(value >= 0.95 for value in api_means.values()) if complete else None,
+            "api_meets_target": {
+                op: meets_target(value) if api_complete[op] else None for op, value in api_means.items()
+            },
+            "meets_target": all(meets_target(value) for value in api_means.values()) if complete else None,
         },
     }
 

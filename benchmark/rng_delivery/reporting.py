@@ -4,7 +4,12 @@ import csv
 import json
 from datetime import datetime
 
-from benchmark.summary_json import _accuracy_result, aggregate_delivery_results, collect_environment
+from benchmark.summary_json import (
+    ARITHMETIC_TARGET_PLATFORMS,
+    _accuracy_result,
+    aggregate_delivery_results,
+    collect_environment,
+)
 
 
 def write_results(directory, manifest, records):
@@ -54,21 +59,36 @@ def write_results(directory, manifest, records):
     summary = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "env": collect_environment(manifest),
-        "result": aggregate_delivery_results(api_results),
+        "result": aggregate_delivery_results(api_results, platform=manifest["platform"]),
         "profile": manifest["profile"],
     }
     (directory / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    arithmetic = manifest["platform"] in ARITHMETIC_TARGET_PLATFORMS
     lines = [
         f"# {manifest['platform']} RNG results",
         "",
         f"Primary timing: total_ms_median; speedup={manifest['acceptance_baseline']}/FlagRAND.",
-        "The existing speedup field is an arithmetic mean; geometric_mean is reported separately.",
+        (
+            "Arithmetic mean of per-shape/lambda speedups; each API has equal weight in the family arithmetic mean."
+            if arithmetic
+            else "The existing speedup field is an arithmetic mean; geometric_mean is reported separately."
+        ),
         "",
-        "| API | dtype | Points | Arithmetic mean | Geometric mean | Status |",
-        "|---|---|---:|---:|---:|---|",
+        (
+            "| API | dtype | Points | Arithmetic mean | Status |"
+            if arithmetic
+            else "| API | dtype | Points | Arithmetic mean | Geometric mean | Status |"
+        ),
+        "|---|---|---:|---:|---|" if arithmetic else "|---|---|---:|---:|---:|---|",
     ]
     for operator, result in api_results.items():
         for dtype, data in result["performance"]["data"].items():
+            if arithmetic:
+                lines.append(
+                    f"| {operator} | {dtype} | {len(data['details'])} | {data['speedup']:.6f} | "
+                    f"{result['performance']['status']} |"
+                )
+                continue
             geometric = data.get("geometric_mean")
             geometric_text = f"{geometric:.6f}" if geometric is not None else "N/A"
             lines.append(

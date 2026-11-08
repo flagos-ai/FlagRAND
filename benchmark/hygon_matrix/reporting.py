@@ -60,7 +60,7 @@ def build_api_summary(records: list[dict[str, Any]], distributions: tuple[str, .
 
 
 def print_api_summary(summary: list[dict[str, Any]]) -> None:
-    LOGGER.info("API speedup summary: Hygon hipRAND total_ms_median / FlagRAND total_ms_median")
+    LOGGER.info("API arithmetic mean speedup: Hygon hipRAND total_ms_median / FlagRAND total_ms_median")
     for row in summary:
         if row["points"]:
             speedups = ",".join(f"{point['n']}:{point['speedup']:.3f}x" for point in row["points"])
@@ -143,7 +143,7 @@ def _render_summary(manifest: dict[str, Any], records: list[dict[str, Any]]) -> 
             "",
             "## Per-API speedup",
             "",
-            "| API | Shapes | Mean | Min | Max |",
+            "| API | Shapes | Arithmetic mean | Min | Max |",
             "|---|---:|---:|---:|---:|",
         )
     )

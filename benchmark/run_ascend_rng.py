@@ -115,17 +115,17 @@ def summarize(records):
             ratio = native["total_ms_median"] / candidate["total_ms_median"]
             ratios[operator].append(ratio)
             by_lambda[(operator, lam)].append(ratio)
-    geometric_mean = lambda values: math.exp(math.fsum(math.log(x) for x in values) / len(values))
+    arithmetic_mean = lambda values: math.fsum(values) / len(values)
     per_api = {
-        operator: {"paired_cases": len(values), "geometric_mean": geometric_mean(values)}
+        operator: {"paired_cases": len(values), "arithmetic_mean": arithmetic_mean(values)}
         for operator, values in ratios.items()
     }
     families = defaultdict(list)
     for operator, result in per_api.items():
-        families[split_operator(operator)[0]].append(result["geometric_mean"])
+        families[split_operator(operator)[0]].append(result["arithmetic_mean"])
     return {
         "scope": "CANN same-distribution native C APIs; no same-generator or bitstream equivalence",
-        "aggregation": "equal weight per shape/lambda pair; family is equal weight per API geometric mean",
+        "aggregation": "arithmetic mean of native/FlagRAND ratios, equal weight per shape/lambda pair; family arithmetic mean gives each API equal weight",
         "native_providers_requested": sorted(
             {row["native_provider_requested"] for row in records if row["backend"] == "cann_native_c"}
         ),
@@ -134,11 +134,11 @@ def summarize(records):
         },
         "per_api": per_api,
         "per_lambda": [
-            {"operator": op, "lambda": lam, "paired_cases": len(values), "geometric_mean": geometric_mean(values)}
+            {"operator": op, "lambda": lam, "paired_cases": len(values), "arithmetic_mean": arithmetic_mean(values)}
             for (op, lam), values in by_lambda.items()
         ],
         "families": {
-            key: {"api_count": len(values), "geometric_mean": geometric_mean(values)}
+            key: {"api_count": len(values), "arithmetic_mean": arithmetic_mean(values)}
             for key, values in families.items()
         },
         "status_counts": {
