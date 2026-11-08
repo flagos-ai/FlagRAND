@@ -76,9 +76,9 @@ def bind_ascend_soft64(runtime_loops=False, direct_product=False, gather_coeffic
     namespace = {}
     for module in modules:
         namespace.update(vars(module))
-    for name, annotation in soft64_math.__annotations__.items():
-        if annotation is tl.constexpr:
-            namespace[name] = tl.constexpr(namespace[name])
+    # Triton-Ascend resolves annotated global tuples directly. Wrapping a
+    # coefficient tuple in tl.constexpr makes nested indexing fail in 3.2.
+    namespace["__annotations__"] = soft64_math.__annotations__
     namespace["two_prod"] = two_prod_split
     if direct_product:
         from .ascend_simple_product import two_prod_direct

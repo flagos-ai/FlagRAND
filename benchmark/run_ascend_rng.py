@@ -6,7 +6,7 @@ import json
 import math
 import traceback
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import torch
@@ -44,6 +44,7 @@ def run_case(operator, n, lam, seed, profile, build_dir, native, native_provider
         "n": n,
         "lambda": lam,
         "seed": seed,
+        "case_started_at": datetime.now(timezone.utc).isoformat(),
     }
     if native:
         generator_type, metadata = native_configuration(api, DTYPES[api], native_provider)
@@ -98,6 +99,7 @@ def run_case(operator, n, lam, seed, profile, build_dir, native, native_provider
         record["status"] = "pass" if record["validation"]["status"] == "pass" else "validation_fail"
     except Exception as exc:
         record.update(status="error", error_type=type(exc).__name__, error=str(exc), traceback=traceback.format_exc())
+    record["case_finished_at"] = datetime.now(timezone.utc).isoformat()
     return record
 
 
@@ -128,9 +130,7 @@ def summarize(records):
             {row["native_provider_requested"] for row in records if row["backend"] == "cann_native_c"}
         ),
         "native_components": {
-            row["distribution"]: row["baseline_metadata"]
-            for row in records
-            if row["backend"] == "cann_native_c"
+            row["distribution"]: row["baseline_metadata"] for row in records if row["backend"] == "cann_native_c"
         },
         "per_api": per_api,
         "per_lambda": [
@@ -201,6 +201,7 @@ def main():
     manifest = {
         "platform": "ascend",
         "device": torch.npu.get_device_name(args.device),
+        "device_index": args.device,
         "torch": torch.__version__,
         "torch_npu": torch_npu.__version__,
         "profile": vars(profile),

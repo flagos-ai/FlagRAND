@@ -201,8 +201,11 @@ def supported_operator_ids(selected_platform: str) -> set[str]:
         return set(ALL_DISTRIBUTIONS)
     if selected_platform == "ascend-cann900":
         from benchmark.ascend_910c.config import ASCEND_910C_SUPPORTED_DISTRIBUTIONS
+        from benchmark.rng_delivery.config import OPERATORS
 
-        return set(ASCEND_910C_SUPPORTED_DISTRIBUTIONS)
+        return set(ASCEND_910C_SUPPORTED_DISTRIBUTIONS) | {
+            op for op in OPERATORS if op.startswith("mtgp32_") or op in ("philox_poisson", "xorwow_poisson")
+        }
     if selected_platform == "metax":
         from benchmark.muxi_matrix.config import ALL_DISTRIBUTIONS
         from benchmark.rng_delivery.config import OPERATORS
@@ -393,6 +396,11 @@ def _accuracy_test_paths(operator: dict[str, Any], platform: str) -> list[Path]:
     from benchmark.rng_delivery.config import OPERATORS
 
     if operator["id"] in OPERATORS:
+        if platform == "ascend-cann900":
+            if operator["id"].startswith("mtgp32_"):
+                return [ROOT / "tests/accuracy/test_mtgp32_ascend.py"]
+            if operator["id"] in ("philox_poisson", "xorwow_poisson"):
+                return [ROOT / "tests/accuracy/test_poisson_ascend.py"]
         return [ROOT / str(operator["accuracy_test"])]
     if platform == "hygon":
         return [ROOT / str(operator["accuracy_test"]), ROOT / "tests/accuracy/test_philox_hygon.py"]
@@ -475,7 +483,7 @@ def _performance_command(
         command = [
             sys.executable,
             "-m",
-            "benchmark.run_rng_delivery",
+            "benchmark.run_ascend_rng" if config.platform == "ascend-cann900" else "benchmark.run_rng_delivery",
             "--profile",
             "matrix" if config.profile in {"acceptance", "full", "matrix"} else "smoke",
             "--distributions",
@@ -485,6 +493,8 @@ def _performance_command(
         ]
         if config.platform in {"thead", "iluvatar", "hygon"}:
             command.extend(("--platform", config.platform))
+        elif config.platform == "ascend-cann900":
+            command.extend(("--native-provider", "runtime"))
         return command
     module = os.environ.get("FLAGRAND_PERF_MODULE", PERFORMANCE_MODULES[config.platform])
     profile = config.profile

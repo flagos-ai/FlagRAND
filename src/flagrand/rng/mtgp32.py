@@ -20,6 +20,11 @@ calls without a live cache retain the direct PPU kernels.
 Hygon small and partial calls retain raw and derived caches; prefetch targets
 256 calls, bounded by 8388608 raw words or the current request when larger,
 with at most 255 extra words for block alignment.
+Ascend small and partial calls prefetch 256 calls, bounded by 4194304 raw
+words or the current request when larger, with up to 255 alignment words.
+Derived values share that same raw window; contiguous cached output uses an
+ACL copy on the current stream. Standard FP64 normal and lognormal use
+three-float radius, angle and output stages with a bounded derived cache.
 Device graph replay of partial-cache operations needs work.
 """
 
@@ -109,6 +114,9 @@ class Mtgp32Generator:
             self._hygon_mtgp_buffer.values = None
             self._hygon_mtgp_buffer.cached_copy = None
         self._hygon_mtgp_plan = None
+        if getattr(self, "_ascend_mtgp_buffer", None) is not None:
+            self._ascend_mtgp_buffer.values = None
+            self._ascend_mtgp_buffer.acl_copy = None
 
     def _uses_iluvatar_buffer(self, n: int) -> bool:
         backend = getattr(self, "_iluvatar_backend", None)
@@ -187,6 +195,10 @@ class Mtgp32Generator:
         n = out.numel()
         if n == 0:
             return out
+        if get_vendor_info().vendor_name == "ascend":
+            from ._mtgp32_ascend_api import generate
+
+            return generate(self, out, **kwargs)
         if not kwargs and get_vendor_info().vendor_name == "hygon" and getattr(self, "_use_buffered", True):
             return _generate_hygon(self, out)
         if not kwargs and out.dtype == torch.int32 and self._uses_iluvatar_buffer(n):
@@ -259,6 +271,10 @@ class Mtgp32Generator:
         n = out.numel()
         if n == 0:
             return out
+        if get_vendor_info().vendor_name == "ascend":
+            from ._mtgp32_ascend_api import generate_distribution
+
+            return generate_distribution(self, out, "uniform", **kwargs)
         if not kwargs and get_vendor_info().vendor_name == "hygon" and getattr(self, "_use_buffered", True):
             return _generate_hygon(self, out, "uniform")
         if not kwargs and out.dtype == torch.float32 and self._uses_iluvatar_buffer(n):
@@ -383,6 +399,22 @@ class Mtgp32Generator:
         n = out.numel()
         if n == 0:
             return out
+        if not kwargs and getattr(self, "_use_buffered", True):
+            buffer = getattr(self, "_ascend_mtgp_buffer", None)
+            cached = None if buffer is None else buffer.acl_copy
+            if cached is not None:
+                words = cached.try_copy(self, out, n, "lognormal" if lognormal else "normal", mean, stddev)
+                if words:
+                    self.offset += words
+                    if self.offset == cached.end:
+                        clear_chunk_cache(self)
+                        buffer.values = None
+                        buffer.acl_copy = None
+                    return out
+        if get_vendor_info().vendor_name == "ascend":
+            from ._mtgp32_ascend_api import generate_distribution
+
+            return generate_distribution(self, out, "lognormal" if lognormal else "normal", mean, stddev, **kwargs)
         if not kwargs and get_vendor_info().vendor_name == "hygon" and getattr(self, "_use_buffered", True):
             return _generate_hygon(self, out, "lognormal" if lognormal else "normal", mean=mean, stddev=stddev)
         if not kwargs and out.dtype == torch.float32:

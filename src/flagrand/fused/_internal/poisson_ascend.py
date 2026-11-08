@@ -8,6 +8,7 @@ import triton.language as tl
 
 from flagrand.rng._poisson_table import poisson_alias_table
 from flagrand.rng._xorwow.ascend_kernels import _next_i32
+from flagrand.rng.mtgp32 import Mtgp32Generator
 from flagrand.rng.philox import PhiloxGenerator
 from flagrand.rng.xorwow import XorwowGenerator
 from flagrand.runtime.compiled_launcher import CachedKernelLauncher
@@ -159,6 +160,15 @@ _xorwow_launch = CachedKernelLauncher(
 
 
 def generate_poisson(engine, out, lam, block_size=None, num_warps=None):
+    if (
+        isinstance(engine, Mtgp32Generator)
+        and block_size is None
+        and num_warps is None
+        and getattr(engine, "_use_buffered", True)
+    ):
+        from flagrand.rng._mtgp32_ascend_poisson import generate
+
+        return generate(engine, out, lam)
     n = out.numel()
     if not n:
         return out

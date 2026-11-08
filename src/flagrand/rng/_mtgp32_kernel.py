@@ -121,6 +121,13 @@ def launch_mtgp32_blocks(
     linear_table: bool = False,
 ) -> None:
     grid = (block_count,)
+    if get_vendor_info().vendor_name == "ascend":
+        from ._mtgp32_ascend import blocks_kernel
+
+        blocks_kernel[grid](
+            out, state, pos, sh1, sh2, param, temper, output_elements, int(chunks), start_iter, block_count, output_mode
+        )
+        return
     _mtgp32_kernel[grid](
         out,
         state,
@@ -245,6 +252,13 @@ def launch_mtgp32_contiguous(
     linear_table=False,
     tensor_signatures=None,
 ):
+    if get_vendor_info().vendor_name == "ascend":
+        from ._mtgp32_ascend import contiguous_kernel
+
+        contiguous_kernel[(min(block_count, state.shape[0]),)](
+            out, state, pos, sh1, sh2, param, temper, start_block, block_count, state.shape[0]
+        )
+        return
     # PPU's measured shared-state region starts at 16 Mi raw words. Its
     # original table loads outperform the four-basis form on this backend.
     if block_count >= 65536 and num_warps == 8 and not linear_table and get_vendor_info().vendor_name == "thead":
