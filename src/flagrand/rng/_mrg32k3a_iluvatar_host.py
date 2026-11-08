@@ -94,6 +94,9 @@ def capture(engine, out, distribution, mean, stddev, backend, prepared, compiled
     )
 
 
+_direct_getattribute = object.__getattribute__
+
+
 def generate_hot(engine, out, distribution, *, seed=None, offset=None, mean=0.0, stddev=1.0, **kwargs):
     plan = engine._corex_recent_plan
     if seed is not None or offset is not None or kwargs:
@@ -109,8 +112,8 @@ def generate_hot(engine, out, distribution, *, seed=None, offset=None, mean=0.0,
             if (
                 os.environ.get("FLAGRAND_FORCE_PORTABLE") == entry.portable_value
                 and entry.kernel.debug == entry.debug
-                and getattr(compiled, "launch_enter_hook", None) is None
-                and getattr(compiled, "launch_exit_hook", None) is None
+                and _direct_getattribute(compiled, "launch_enter_hook") is None
+                and _direct_getattribute(compiled, "launch_exit_hook") is None
             ):
                 state = engine._state
                 if paired:
