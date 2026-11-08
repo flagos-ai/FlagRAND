@@ -74,6 +74,10 @@ def _raw_poisson(
 
 
 def generate_poisson(engine, out, lam: float, *, block_size=None, num_warps=None, fused_mtgp32=True, _capture=None):
+    if get_vendor_info().vendor_name == "ascend" and isinstance(engine, (PhiloxGenerator, XorwowGenerator)):
+        from flagrand.fused._internal.poisson_ascend import generate_poisson as generate_ascend
+
+        return generate_ascend(engine, out, lam, block_size, num_warps)
     requested_warps = num_warps
     requested_block_size = block_size
     num_warps = 4 if num_warps is None else num_warps

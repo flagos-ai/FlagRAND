@@ -16,14 +16,15 @@ TIMING_SCOPE = (
 )
 
 
-def measure(operation: Callable[[], Any], profile: Profile) -> dict[str, Any]:
+def measure(operation: Callable[[], Any], profile: Profile, *, synchronize=None) -> dict[str, Any]:
+    synchronize = torch.npu.synchronize if synchronize is None else synchronize
     for _ in range(profile.warmup):
         operation()
-    torch.npu.synchronize()
+    synchronize()
 
     pilot_start = time.perf_counter()
     operation()
-    torch.npu.synchronize()
+    synchronize()
     pilot_ms = max((time.perf_counter() - pilot_start) * 1000.0, 0.001)
     calls = max(1, min(1000, int(profile.timing_budget_ms / pilot_ms)))
 
@@ -32,7 +33,7 @@ def measure(operation: Callable[[], Any], profile: Profile) -> dict[str, Any]:
     device_samples: list[float] = []
     event_errors: list[str] = []
     for _ in range(profile.repeats):
-        torch.npu.synchronize()
+        synchronize()
         event_start, event_end = _make_events(event_errors)
         if event_start is not None:
             event_start.record()
@@ -42,7 +43,7 @@ def measure(operation: Callable[[], Any], profile: Profile) -> dict[str, Any]:
         enqueue_end = time.perf_counter()
         if event_end is not None:
             event_end.record()
-        torch.npu.synchronize()
+        synchronize()
         end = time.perf_counter()
         enqueue_samples.append((enqueue_end - start) * 1e6 / calls)
         total_samples.append((end - start) * 1e3 / calls)

@@ -46,7 +46,7 @@ def poisson_cdf(lam, cutoff):
     return math.fsum(math.exp(-lam + k * math.log(lam) - math.lgamma(k + 1)) for k in range(cutoff + 1))
 
 
-def validate_output(output, replay, api, lam=None):
+def validate_output(output, replay, api, lam=None, *, uniform_interval="(0, 1]"):
     values = output.detach().cpu().double()
     checks = {"reproducible": bool(torch.equal(output, replay))}
     metrics = {
@@ -62,7 +62,11 @@ def validate_output(output, replay, api, lam=None):
         return {"status": "pass" if all(checks.values()) else "fail", "checks": checks, "metrics": metrics}
     checks["finite"] = bool(torch.isfinite(values).all())
     if api.startswith("uniform"):
-        checks["range"] = bool(((values > 0) & (values <= 1)).all())
+        metrics["uniform_interval"] = uniform_interval
+        if uniform_interval == "[0, 1)":
+            checks["range"] = bool(((values >= 0) & (values < 1)).all())
+        else:
+            checks["range"] = bool(((values > 0) & (values <= 1)).all())
         mean0, var0, fourth = 0.5, 1 / 12, 1 / 80
         cutoff, cdf0 = 0.5, 0.5
     elif api == "poisson":
