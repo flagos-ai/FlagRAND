@@ -38,6 +38,8 @@ def generate_uniform_double(generator: CurandGenerator, out: torch.Tensor, **kwa
 def generate_normal(generator: CurandGenerator, out: torch.Tensor, *, mean=0.0, stddev=1.0, **kwargs):
     if generator.rng_type == CURAND_RNG_PSEUDO_PHILOX4_32_10:
         return _philox.generate_normal(generator, out, mean=mean, stddev=stddev, **kwargs)
+    if not kwargs:
+        return generator.engine.generate_normal(out, mean=mean, stddev=stddev)
     return generator.engine.generate_normal(out, mean=mean, stddev=stddev, **kwargs)
 
 
@@ -50,6 +52,8 @@ def generate_normal_double(generator: CurandGenerator, out: torch.Tensor, *, mea
 def generate_lognormal(generator: CurandGenerator, out: torch.Tensor, *, mean=0.0, stddev=1.0, **kwargs):
     if generator.rng_type == CURAND_RNG_PSEUDO_PHILOX4_32_10:
         return _philox.generate_lognormal(generator, out, mean=mean, stddev=stddev, **kwargs)
+    if not kwargs:
+        return generator.engine.generate_normal(out, mean=mean, stddev=stddev, lognormal=True)
     return generator.engine.generate_normal(out, mean=mean, stddev=stddev, lognormal=True, **kwargs)
 
 

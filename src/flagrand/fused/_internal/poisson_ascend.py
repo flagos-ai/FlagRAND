@@ -8,6 +8,7 @@ import triton.language as tl
 
 from flagrand.rng._poisson_table import poisson_alias_table
 from flagrand.rng._xorwow.ascend_kernels import _next_i32
+from flagrand.rng.mrg32k3a import Mrg32k3aGenerator
 from flagrand.rng.mtgp32 import Mtgp32Generator
 from flagrand.rng.philox import PhiloxGenerator
 from flagrand.rng.xorwow import XorwowGenerator
@@ -208,6 +209,22 @@ def generate_poisson(engine, out, lam, block_size=None, num_warps=None):
         )
         engine.offset += 2 * n
         engine._state_offset = engine.offset
+    elif isinstance(engine, Mrg32k3aGenerator):
+        from flagrand.rng._mrg32k3a_ascend import launch_poisson
+
+        launch_poisson(
+            engine,
+            out,
+            threshold,
+            aliases,
+            first,
+            size,
+            block_size=512 if block_size is None else block_size,
+            num_warps=warps,
+        )
+        engine.offset += 2 * n
+        engine._state_offset = engine.offset
+        engine._cursor = (engine._cursor + 2 * n) % engine.nstreams
     else:
         raw = torch.empty(2 * n, dtype=torch.int32, device=out.device)
         engine.generate(raw)

@@ -203,9 +203,7 @@ def supported_operator_ids(selected_platform: str) -> set[str]:
         from benchmark.ascend_910c.config import ASCEND_910C_SUPPORTED_DISTRIBUTIONS
         from benchmark.rng_delivery.config import OPERATORS
 
-        return set(ASCEND_910C_SUPPORTED_DISTRIBUTIONS) | {
-            op for op in OPERATORS if op.startswith("mtgp32_") or op in ("philox_poisson", "xorwow_poisson")
-        }
+        return set(ASCEND_910C_SUPPORTED_DISTRIBUTIONS) | set(OPERATORS)
     if selected_platform == "metax":
         from benchmark.muxi_matrix.config import ALL_DISTRIBUTIONS
         from benchmark.rng_delivery.config import OPERATORS
@@ -401,6 +399,7 @@ def _accuracy_test_paths(operator: dict[str, Any], platform: str) -> list[Path]:
                 return [ROOT / "tests/accuracy/test_mtgp32_ascend.py"]
             if operator["id"] in ("philox_poisson", "xorwow_poisson"):
                 return [ROOT / "tests/accuracy/test_poisson_ascend.py"]
+            return [ROOT / "tests/accuracy/test_rng_families_ascend.py"]
         return [ROOT / str(operator["accuracy_test"])]
     if platform == "hygon":
         return [ROOT / str(operator["accuracy_test"]), ROOT / "tests/accuracy/test_philox_hygon.py"]

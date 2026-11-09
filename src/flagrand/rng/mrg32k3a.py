@@ -26,8 +26,8 @@ from ._xorwow._binding import bind_kernel
 from ._xorwow.api import _math_module, resolve_backend
 from ._xorwow.native_math import sincos_turns
 
-
 _hygon_generate = None
+_ascend_generate = None
 
 
 @lru_cache(maxsize=8)
@@ -514,6 +514,9 @@ class Mrg32k3aGenerator:
     nstreams: int = 131072
     _state: torch.Tensor | None = field(default=None, init=False, repr=False)
     _corex_recent_plan: object | None = field(default=None, init=False, repr=False)
+    _ascend_normal64_window: object | None = field(default=None, init=False, repr=False)
+    _ascend_raw_cached_plan: object | None = field(default=None, init=False, repr=False)
+    _ascend_paired_cached_plan: object | None = field(default=None, init=False, repr=False)
     _cursor: int = field(default=0, init=False, repr=False)
     _state_seed: int | None = field(default=None, init=False, repr=False)
     _state_offset: int | None = field(default=None, init=False, repr=False)
@@ -543,6 +546,10 @@ class Mrg32k3aGenerator:
 
     def _clear_normal_cache(self):
         self._corex_recent_plan = None
+        self._ascend_plan = None
+        self._ascend_raw_cached_plan = None
+        self._ascend_paired_cached_plan = None
+        self._ascend_normal64_window = None
         self._normal_cache.clear()
         self._normal_has_spare.clear()
         self._normal_spare_index.clear()
@@ -560,12 +567,50 @@ class Mrg32k3aGenerator:
         return self._state
 
     def generate(self, out, **kwargs):
+        global _ascend_generate
+        if (
+            type(self) is Mrg32k3aGenerator
+            and self._auto_backend == "ascend"
+            and "seed" not in kwargs
+            and "offset" not in kwargs
+            and "backend" not in kwargs
+        ):
+            if _ascend_generate is None:
+                from ._mrg32k3a_ascend_api import generate as _ascend_generate
+
+            return _ascend_generate(self, out, 0, **kwargs)
         return self._generate(out, 0, **kwargs)
 
     def generate_uniform(self, out, **kwargs):
+        global _ascend_generate
+        if (
+            type(self) is Mrg32k3aGenerator
+            and self._auto_backend == "ascend"
+            and "seed" not in kwargs
+            and "offset" not in kwargs
+            and "backend" not in kwargs
+        ):
+            if _ascend_generate is None:
+                from ._mrg32k3a_ascend_api import generate as _ascend_generate
+
+            return _ascend_generate(self, out, 1, **kwargs)
         return self._generate(out, 1, **kwargs)
 
     def generate_normal(self, out, mean=0.0, stddev=1.0, lognormal=False, **kwargs):
+        global _ascend_generate
+        if (
+            type(self) is Mrg32k3aGenerator
+            and self._auto_backend == "ascend"
+            and "seed" not in kwargs
+            and "offset" not in kwargs
+            and "backend" not in kwargs
+        ):
+            if _ascend_generate is None:
+                from ._mrg32k3a_ascend_api import generate as _ascend_generate
+
+            if not kwargs:
+                return _ascend_generate(self, out, 3 if lognormal else 2, mean=mean, stddev=stddev)
+            return _ascend_generate(self, out, 3 if lognormal else 2, mean=mean, stddev=stddev, **kwargs)
         return self._generate(out, 3 if lognormal else 2, mean=mean, stddev=stddev, **kwargs)
 
     def _resolve_backend(self, device, backend, cache):
@@ -577,6 +622,17 @@ class Mrg32k3aGenerator:
         return self._auto_backend
 
     def _generate(self, out, distribution, **kwargs):
+        if (
+            self._auto_backend == "ascend"
+            and "seed" not in kwargs
+            and "offset" not in kwargs
+            and "backend" not in kwargs
+        ):
+            global _ascend_generate
+            if _ascend_generate is None:
+                from ._mrg32k3a_ascend_api import generate as _ascend_generate
+
+            return _ascend_generate(self, out, distribution, **kwargs)
         if self._auto_backend == "hygon":
             global _hygon_generate
             if _hygon_generate is None:
@@ -597,6 +653,10 @@ class Mrg32k3aGenerator:
         device = out.device
         state = self.ensure_state(device)
         backend = self._resolve_backend(device, str(kwargs.get("backend", "auto")), kwargs.get("cache_backend", True))
+        if backend == "ascend":
+            from ._mrg32k3a_ascend import generate
+
+            return generate(self, out, distribution, mean=mean, stddev=stddev, **kwargs)
         if backend == "hygon" and not kwargs:
             from ._mrg32k3a_hygon import generate
 

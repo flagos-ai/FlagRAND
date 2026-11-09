@@ -74,9 +74,7 @@ def _raw_poisson(
 
 
 def generate_poisson(engine, out, lam: float, *, block_size=None, num_warps=None, fused_mtgp32=True, _capture=None):
-    if get_vendor_info().vendor_name == "ascend" and isinstance(
-        engine, (PhiloxGenerator, XorwowGenerator, Mtgp32Generator)
-    ):
+    if get_vendor_info().vendor_name == "ascend":
         from flagrand.fused._internal.poisson_ascend import generate_poisson as generate_ascend
 
         return generate_ascend(engine, out, lam, block_size, num_warps)
@@ -194,13 +192,7 @@ def generate_poisson(engine, out, lam: float, *, block_size=None, num_warps=None
         from flagrand.fused._internal.mrg32k3a_poisson import launch_mrg32k3a_poisson
 
         launch_mrg32k3a_poisson(
-            engine,
-            out,
-            threshold,
-            aliases,
-            first,
-            size,
-            block_size=block_size // 2,
+            engine, out, threshold, aliases, first, size, block_size=block_size // 2,
             num_warps=2 if get_vendor_info().vendor_name == "hygon" and requested_warps is None else num_warps,
             capture=_capture,
         )
