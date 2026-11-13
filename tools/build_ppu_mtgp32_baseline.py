@@ -20,11 +20,16 @@ from pathlib import Path
 
 def parse_commands(text):
     commands = []
+    environment = {}
     for line in text.splitlines():
         if line.startswith("#$ "):
+            if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", line[3:]):
+                name, value = shlex.split(line[3:], posix=True)[0].split("=", 1)
+                environment[name] = value
+                continue
             tokens = shlex.split(line[3:], posix=False)
             commands.append([token[1:-1] if token[0] in "\"'" and token[-1] == token[0] else token for token in tokens])
-    return commands
+    return commands, environment
 
 
 def main():
@@ -46,7 +51,9 @@ def main():
         f"-arch={args.arch}",
         "-keep",
         "-Xcompiler",
-        "-std=c++14 -fPIC",
+        "-std=c++14",
+        "-Xcompiler",
+        "-fPIC",
         str(source),
         "-o",
         str(library),
@@ -73,7 +80,8 @@ def main():
     if dryrun.returncode:
         sys.stderr.write(dryrun.stderr)
         return dryrun.returncode
-    commands = parse_commands(dryrun.stdout + "\n" + dryrun.stderr)
+    commands, dryrun_environment = parse_commands(dryrun.stdout + "\n" + dryrun.stderr)
+    record["environment_overrides"] = dryrun_environment
     if not commands:
         raise RuntimeError("HGGC dryrun returned no stage commands")
     record["planned_stages"] = len(commands)
@@ -86,7 +94,8 @@ def main():
             # device registration object, and -lhggcrt1. Keep that entire argv;
             # -Xcompiler has already supplied -fPIC to both host object stages.
             argv.insert(1, "-shared")
-        result = subprocess.run(argv, cwd=work, capture_output=True, text=True)
+        result = subprocess.run(argv, cwd=work, capture_output=True, text=True,
+                                env={**os.environ, **dryrun_environment})
         prefix = f"stage-{index:02d}"
         (work / (prefix + ".stdout")).write_text(result.stdout)
         (work / (prefix + ".stderr")).write_text(result.stderr)
