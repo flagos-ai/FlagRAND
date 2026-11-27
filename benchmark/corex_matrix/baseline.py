@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import ctypes
-import os
+import subprocess
 from functools import lru_cache
-from pathlib import Path
 
 import torch
 
+from benchmark.corex_matrix.sdk import has_ixrand_headers, sdk_root, stock_library_override
 from benchmark.ppu_matrix.curand import PpuCurandGenerator
 
 COREX_FUNCTIONS = {
@@ -34,16 +34,33 @@ def _check_corex(status: int, operation: str) -> None:
 
 
 def corex_curand_library_path() -> str:
-    candidates = [
-        os.environ.get("FLAGRAND_COREX_CURAND_PATH"),
-        os.environ.get("CURAND_LIBRARY_PATH"),
-        "/usr/local/corex/lib64/libcurand.so",
-        "/usr/local/corex-4.4.0/lib64/libcurand.so",
-    ]
-    for candidate in candidates:
-        if candidate and Path(candidate).exists():
-            return candidate
-    raise FileNotFoundError("CoreX libcurand.so was not found.")
+    override = stock_library_override()
+    if override is not None:
+        return str(override.resolve(strict=True))
+    root = sdk_root()
+    for directory in ("lib64", "lib"):
+        path = root / directory / "libcurand.so"
+        if path.is_file():
+            return str(path.resolve())
+    raise FileNotFoundError(f"CoreX libcurand.so was not found under {root}.")
+
+
+def corex_stock_metadata() -> dict:
+    root = sdk_root()
+    compiler = root / "bin/clang++"
+    compiler_version = None
+    if compiler.is_file():
+        result = subprocess.run([str(compiler), "--version"], capture_output=True, text=True)
+        if result.returncode == 0:
+            compiler_version = result.stdout.splitlines()[0]
+    return {
+        "kind": "CoreX stock host RNG",
+        "sdk_compiler_version": compiler_version,
+        "sdk_root": str(root),
+        "rng_headers": "IX" if has_ixrand_headers(root) else "legacy",
+        "library_path": corex_curand_library_path(),
+        "library_version": corex_curand_version(),
+    }
 
 
 @lru_cache(maxsize=None)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -11,17 +12,29 @@ from pathlib import Path
 
 import pytest
 
+from benchmark.nvidia_matrix.config import ALL_DISTRIBUTIONS
+from benchmark.rng_delivery.config import OPERATORS
+from tools.run_tests import (
+    RunnerConfig,
+    detect_platform,
+    run_performance,
+    supported_operator_ids,
+)
+
 LOGGER = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-OPERATOR_CASES = [
-    pytest.param("raw32", marks=pytest.mark.raw32),
-    pytest.param("uniform_f32", marks=pytest.mark.uniform_f32),
-    pytest.param("uniform_f64", marks=pytest.mark.uniform_f64),
-    pytest.param("normal_f32", marks=pytest.mark.normal_f32),
-    pytest.param("normal_f64", marks=pytest.mark.normal_f64),
-    pytest.param("lognormal_f32", marks=pytest.mark.lognormal_f32),
-    pytest.param("lognormal_f64", marks=pytest.mark.lognormal_f64),
-]
+
+OPERATOR_MARKS = (
+    pytest.mark.raw32,
+    pytest.mark.uniform_f32,
+    pytest.mark.uniform_f64,
+    pytest.mark.normal_f32,
+    pytest.mark.normal_f64,
+    pytest.mark.lognormal_f32,
+    pytest.mark.lognormal_f64,
+    *(getattr(pytest.mark, name) for name in OPERATORS),
+)
+OPERATOR_CASES = [pytest.param(mark.name, marks=mark) for mark in OPERATOR_MARKS]
 pytestmark = [pytest.mark.performance]
 
 
@@ -69,8 +82,7 @@ def _performance_command(platform: str, profile: str, distribution: str) -> list
     return command
 
 
-@pytest.mark.parametrize("distribution", OPERATOR_CASES)
-def test_hardware_performance_api(distribution: str) -> None:
+def _run_legacy_performance(distribution: str) -> None:
     platform = os.environ.get("FLAGRAND_PERF_PLATFORM")
     if not platform:
         pytest.skip("set FLAGRAND_PERF_PLATFORM=nvidia, metax, ppu, or ascend_910c on a hardware runner")
@@ -95,3 +107,44 @@ def test_hardware_performance_api(distribution: str) -> None:
     if platform == "ascend_910c" and profile == "acceptance":
         pattern = rf"^API pass\s+{re.escape(distribution)}\s"
         assert re.search(pattern, result.stdout, re.MULTILINE), result.stdout
+
+
+@pytest.mark.parametrize("distribution", OPERATOR_CASES)
+def test_hardware_performance_api(distribution, request, record_property, tmp_path, monkeypatch):
+    if request.config.getoption("level") is None and request.config.getoption("record") is None:
+        # Keep the direct, environment-driven Philox performance entry point.
+        if distribution not in ALL_DISTRIBUTIONS:
+            pytest.skip("family benchmarks run through --level core or tools/run_tests.py")
+        _run_legacy_performance(distribution)
+        return
+
+    platform = detect_platform()
+    if distribution not in supported_operator_ids(platform):
+        pytest.skip(f"{platform} does not implement {distribution}")
+    profile = os.environ.get("FLAGRAND_PERF_PROFILE", "smoke")
+    timeout = int(os.environ.get("FLAGRAND_PERF_TIMEOUT_SECONDS", "3600"))
+    # optest cancels the entire pytest process group on timeout.
+    monkeypatch.setenv("FLAGRAND_MANAGED_PROCESS_GROUP", "1")
+    config = RunnerConfig(tmp_path, platform, profile, True, timeout)
+    result = run_performance(0, {"id": distribution}, config)
+    path = tmp_path / distribution / "performance_result.json"
+    record = json.loads(path.read_text(encoding="utf-8"))[distribution] if path.exists() else {}
+    for detail in record.get("details", []):
+        detail["dtype"] = "torch." + detail["dtype"].removeprefix("torch.")
+    record_property("flagrand_performance", record)
+    if result.get("status") == "Skipped":
+        pytest.skip(record["reason"])
+    if result.get("status") != "Passed":
+        stderr = tmp_path / distribution / "performance_stderr.log"
+        details = stderr.read_text(errors="replace") if stderr.exists() else ""
+        pytest.fail(f"{result.get('status')}: {record.get('reason') or result.get('reason', '')}\n{details}")
+    reference = request.config.getoption("base_data")
+    if reference:
+        from benchmark.external_baseline import apply_external_baseline
+
+        chip = os.environ.get("FLAGOS_GPU_DEVICE")
+        if not chip:
+            from flagrand.runtime import device
+
+            chip = device.torch_device_fn.get_device_name(0)
+        apply_external_baseline(distribution, record["details"], reference, platform, chip)

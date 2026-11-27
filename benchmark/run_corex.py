@@ -8,7 +8,7 @@ from typing import Any
 import torch
 import triton
 
-from benchmark.corex_matrix.baseline import corex_curand_library_path, probe_native_fp64
+from benchmark.corex_matrix.baseline import corex_curand_library_path, corex_stock_metadata, probe_native_fp64
 from benchmark.corex_matrix.cases import (
     annotate_speedup,
     run_corex_curand_case,
@@ -53,6 +53,7 @@ def main() -> int:
             "device": torch.cuda.get_device_name(0),
             "device_count": torch.cuda.device_count(),
             "corex_curand": corex_curand_library_path(),
+            "corex_sdk": corex_stock_metadata(),
         },
     }
     manifest["preflight"] = warm_flagrand_compilation_paths(args.seed)

@@ -29,14 +29,39 @@ if ! command -v uv >/dev/null 2>&1; then
         | tar xz --strip-components=1 -C "$HOME/.local/bin"
 fi
 
-if [[ "$SYSTEM_SITE_PACKAGES" == "true" ]]; then
-    "${FLAGRAND_SYSTEM_PYTHON:-python3}" -m venv --system-site-packages .venv
-else
-    uv python install "$PYTHON_VERSION" --python-preference only-managed -q
-    uv venv .venv --python "$PYTHON_VERSION" --python-preference only-managed -q
+ILUVATAR_RUNTIME=""
+if [[ "$BACKEND" == "iluvatar" ]]; then
+    source scripts/ci/backend_env.sh "$BACKEND"
+    ILUVATAR_RUNTIME=$("${FLAGRAND_SYSTEM_PYTHON:-python3}" scripts/ci/iluvatar_python.py "$PWD/.venv")
+    export ILUVATAR_RUNTIME
+fi
+if [[ "$ILUVATAR_RUNTIME" != "image" ]]; then
+    if [[ "$SYSTEM_SITE_PACKAGES" == "true" ]]; then
+        "${FLAGRAND_SYSTEM_PYTHON:-python3}" -m venv --system-site-packages .venv
+    else
+        uv python install "$PYTHON_VERSION" --python-preference only-managed -q
+        VENV_ARGS=(--python "$PYTHON_VERSION" --python-preference only-managed -q)
+        if [[ "$BACKEND" == "iluvatar" ]]; then
+            VENV_ARGS+=(--clear)
+        fi
+        uv venv .venv "${VENV_ARGS[@]}"
+        if [[ "$BACKEND" == "iluvatar" ]]; then
+            # Some images expose their SDK wheels through PYTHONPATH. On SDK
+            # changes, the new venv's matching wheels must win on later runs too.
+            .venv/bin/python -I - <<'PY'
+import sysconfig
+from pathlib import Path
+
+site = sysconfig.get_path("purelib")
+(Path(site) / "flagrand-corex-bootstrap.pth").write_text(f"import sys; sys.path.insert(0, {site!r})\n")
+PY
+        fi
+    fi
 fi
 source .venv/bin/activate
-source scripts/ci/backend_env.sh "$BACKEND"
+if [[ "$BACKEND" != "iluvatar" ]]; then
+    source scripts/ci/backend_env.sh "$BACKEND"
+fi
 
 uv pip install -q \
     "wheel==0.45.0" \
@@ -51,11 +76,16 @@ import yaml
 
 with open(os.environ["BACKENDS_YAML"], encoding="utf-8") as stream:
     backend = yaml.safe_load(stream)["backends"][os.environ["BACKEND"]]
-print(" ".join(backend["deps"] + backend["triton"]))
+runtime = os.environ.get("ILUVATAR_RUNTIME")
+if runtime != "image":
+    packages = backend.get("sdk_wheels", {}).get(runtime, backend)
+    print(" ".join(packages["deps"] + packages["triton"]))
 PY
 )
 if [[ -n "$PACKAGES" ]]; then
-    uv pip install -q $PACKAGES \
+    # This bootstrap installs the vendor runtime explicitly in the new venv.
+    # The project's uv exclusions apply when installing FlagRAND into an image.
+    uv --no-config pip install -q $PACKAGES \
         --default-index "$FLAGOS_PYPI" \
         --index "$MIRROR" \
         --index-strategy unsafe-best-match
@@ -71,16 +101,21 @@ print(" ".join(backend.get("triton_post_install", [])))
 PY
 )
 if [[ -n "$POST_PACKAGES" ]]; then
-    uv pip install -q $POST_PACKAGES \
+    uv --no-config pip install -q $POST_PACKAGES \
         --default-index "$FLAGOS_PYPI" \
         --index "$MIRROR" \
         --index-strategy unsafe-best-match
 fi
-if [[ "${ENABLE_CPP:-0}" == "1" ]]; then
-    uv pip install . --no-deps --no-build-isolation
-else
-    uv pip install -e . --no-deps --no-build-isolation
+PROJECT_SPEC=.
+PROJECT_FLAGS=(--no-deps --no-build-isolation)
+if [[ "$BACKEND" == "iluvatar" ]]; then
+    PROJECT_SPEC='.[test,iluvatar]'
+    PROJECT_FLAGS=(--index "$MIRROR" --no-build-isolation)
 fi
+if [[ "${ENABLE_CPP:-0}" != "1" ]]; then
+    PROJECT_FLAGS+=(--editable)
+fi
+uv pip install "${PROJECT_FLAGS[@]}" "$PROJECT_SPEC"
 
 if [[ "${ENABLE_CPP:-0}" == "1" ]]; then
     if [[ "$BACKEND" != "iluvatar" ]]; then

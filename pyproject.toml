@@ -14,15 +14,28 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The accelerator image supplies the backend runtime for these optest vendors.
+ascend = []
+hygon = []
+metax = []
+nvidia = []
 iluvatar = [
+    "ninja>=1.11",
+    # Match the NumPy series used by the CoreX images and bootstrap.
+    "numpy<2",
+    "setuptools>=68",
+]
+thead = [
     "ninja>=1.11",
     "setuptools>=68",
 ]
+# Existing installations also use the PPU device name as an extra.
 ppu = [
     "ninja>=1.11",
     "setuptools>=68",
 ]
 test = [
+    "numpy",
     "PyYAML>=6.0,<7",
     "pytest>=8.0,<10",
 ]
@@ -31,11 +44,17 @@ dev = [
     "build>=1.2,<2",
     "flake8>=7.1,<8",
     "isort>=5.13,<7",
+    "numpy",
     "pre-commit>=3.7,<5",
     "PyYAML>=6.0,<7",
     "pytest>=8.0,<10",
     "twine>=5.0,<7",
 ]
+
+[tool.uv]
+# optest installs into a prepared accelerator environment. The Triton module
+# may be supplied by a vendor SDK or FlagTree instead of a triton wheel.
+exclude-dependencies = ["torch", "triton"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -47,7 +66,6 @@ include = ["flagrand*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/accuracy"]
-addopts = "--basetemp=.pytest_tmp"
 markers = [
     "accuracy: deterministic, contract, or statistical correctness checks",
     "performance: end-to-end hardware performance matrix",

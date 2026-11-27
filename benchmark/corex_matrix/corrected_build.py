@@ -1,4 +1,4 @@
-"""Build the repository-owned CoreX SDK corrected references outside timing."""
+"""Build the corrected references for the legacy CoreX RNG implementation."""
 
 import argparse
 import hashlib
@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from benchmark.corex_matrix.sdk import needs_corrected_reference, sdk_root
 from benchmark.corex_matrix.sdk_host_extract import extract_host
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -109,6 +110,15 @@ def prepare_corrected_baseline(build_directory=None):
     return str(library)
 
 
+def prepare_operator_references(operators, directory):
+    for operator in operators:
+        engine, _, api = operator.partition("_")
+        if needs_corrected_reference(engine, api):
+            prepare_corrected_baseline(directory)
+            return baseline_build_record()
+    return None
+
+
 def baseline_build_record():
     path = os.environ.get(RECORD_ENV)
     return json.loads(Path(path).read_text()) if path else None
@@ -117,7 +127,7 @@ def baseline_build_record():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--sdk-root", type=Path, default=Path(os.environ.get("COREX_HOME", "/usr/local/corex")))
+    parser.add_argument("--sdk-root", type=Path, default=sdk_root())
     parser.add_argument("--compiler", type=Path, default=os.environ.get("FLAGRAND_COREX_COMPILER"))
     parser.add_argument("--arch", default=os.environ.get("FLAGRAND_COREX_ARCH", "ivcore11"))
     args = parser.parse_args()

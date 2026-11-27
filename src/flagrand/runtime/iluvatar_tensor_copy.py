@@ -10,7 +10,12 @@ def load_iluvatar_tensor_copy():
     import torch
     from torch.utils.cpp_extension import load
 
-    sdk = Path(os.environ.get("FLAGRAND_COREX_SDK_ROOT", "/usr/local/corex")).resolve()
+    sdk = Path(
+        os.environ.get("FLAGRAND_COREX_SDK_ROOT")
+        or os.environ.get("COREX_HOME")
+        or os.environ.get("COREX_ROOT")
+        or "/usr/local/corex"
+    ).resolve()
     torch_library = Path(torch.__file__).resolve().parent / "lib"
     return load(
         name="_flagrand_iluvatar_tensor_copy",

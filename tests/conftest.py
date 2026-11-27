@@ -2,34 +2,60 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from tools.run_tests import ROOT, _accuracy_test_paths, detect_platform, supported_operator_ids
+
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("flagrand-record")
-    group.addoption("--record", choices=("json",), help="Record test cases in FlagGems JSON format")
-    group.addoption("--output", help="Path written by --record json")
+    group.addoption("--quick", action="store_true", help="Run one parameter set per selected accuracy test")
     group.addoption("--ref", choices=("cpu",), help="Accepted for FlagGems runner compatibility")
 
 
-def pytest_configure(config: pytest.Config) -> None:
-    config._flagrand_records = {}  # type: ignore[attr-defined]
-    for engine in ("philox", "xorwow", "mrg32k3a", "mtgp32"):
-        for api in (
-            "raw32",
-            "uniform_f32",
-            "uniform_f64",
-            "normal_f32",
-            "normal_f64",
-            "lognormal_f32",
-            "lognormal_f64",
-            "poisson",
-        ):
-            config.addinivalue_line("markers", f"{engine}_{api}: public RNG family API")
+def pytest_sessionstart(session):
+    config = session.config
+    config._flagrand_accuracy_paths = None
+    config._flagrand_skip_reason = None
+    operator = config._flagrand_operators.get(config.option.markexpr)
+    if not (
+        operator and config.getoption("record") and any(Path(arg).resolve() == ROOT / "tests" for arg in config.args)
+    ):
+        return
+    platform = detect_platform()
+    config._flagrand_accuracy_paths = set(_accuracy_test_paths(operator, platform))
+    if operator["id"] not in supported_operator_ids(platform):
+        config._flagrand_skip_reason = f"{platform} does not implement {operator['id']}"
+
+
+def pytest_ignore_collect(collection_path, config):
+    paths = config._flagrand_accuracy_paths
+    if paths is not None and collection_path.name.startswith("test_") and collection_path.suffix == ".py":
+        return bool(config._flagrand_skip_reason) or collection_path not in paths
+    return None
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(config, items):
+    if not config.getoption("quick"):
+        return
+    seen = set()
+    selected, deselected = [], []
+    for item in items:
+        if not item.path.is_relative_to(Path(__file__).parent):
+            selected.append(item)
+            continue
+        key = (item.parent.nodeid, item.originalname)
+        if key in seen:
+            deselected.append(item)
+        else:
+            seen.add(key)
+            selected.append(item)
+    items[:] = selected
+    config.hook.pytest_deselected(items=deselected)
 
 
 def _json_value(value: Any) -> Any:
@@ -43,13 +69,20 @@ def _json_value(value: Any) -> Any:
 
 
 @pytest.hookimpl(hookwrapper=True)
+def pytest_make_collect_report(collector):
+    outcome = yield
+    report = outcome.get_result()
+    if report.failed:
+        collector.config._flagrand_results.record(
+            "accuracy", report.nodeid, {"result": "failed", "reason": report.longreprtext}
+        )
+
+
+@pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]):
     outcome = yield
     report = outcome.get_result()
-    if report.when not in {"setup", "call"}:
-        return
-    records = item.config._flagrand_records  # type: ignore[attr-defined]
-    if report.when == "setup" and report.passed:
+    if item.config.getoption("record") != "json" or (report.when != "call" and report.passed):
         return
     params = {}
     if hasattr(item, "callspec"):
@@ -59,23 +92,13 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[Any]):
         record["observations"] = {key: _json_value(value) for key, value in item.user_properties}
     if not report.passed:
         record["reason"] = report.longreprtext
-    records[item.nodeid] = record
-    _write_records(item.config)
+    item.config._flagrand_results.record("accuracy", item.nodeid, record)
 
 
 def pytest_sessionfinish(session: pytest.Session) -> None:
-    _write_records(session.config)
-
-
-def _write_records(config: pytest.Config) -> None:
-    if config.getoption("record") != "json":
-        return
-    output = config.getoption("output")
-    if not output:
-        raise pytest.UsageError("--record json requires --output")
-    path = Path(output)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(config._flagrand_records, indent=2, ensure_ascii=False),  # type: ignore[attr-defined]
-        encoding="utf-8",
-    )
+    config = session.config
+    if config._flagrand_skip_reason and session.exitstatus == pytest.ExitCode.NO_TESTS_COLLECTED:
+        config._flagrand_results.record(
+            "accuracy", config.option.markexpr, {"result": "skipped", "reason": config._flagrand_skip_reason}
+        )
+        session.exitstatus = pytest.ExitCode.OK

@@ -31,9 +31,13 @@ from tools.run_tests import (
 def test_accuracy_retains_completed_case_when_next_case_aborts(tmp_path, monkeypatch) -> None:
     import tools.run_tests as runner
 
-    plugin = Path(__file__).resolve().parents[1] / "conftest.py"
-    (tmp_path / "conftest.py").write_text(plugin.read_text())
-    test_file = tmp_path / "test_abrupt.py"
+    source_root = Path(__file__).resolve().parents[2]
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    for path in ("conftest.py", "tests/conftest.py"):
+        (tmp_path / path).write_text((source_root / path).read_text())
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join((str(source_root), os.environ.get("PYTHONPATH", ""))))
+    test_file = tests_dir / "test_abrupt.py"
     test_file.write_text(
         """import os
 import pytest
@@ -272,7 +276,9 @@ def test_platform_capabilities_come_from_benchmark_configs() -> None:
 
     assert supported_operator_ids("thead") == supported_operator_ids("ascend-cann900") | set(OPERATORS)
     assert supported_operator_ids("metax") == supported_operator_ids("thead")
-    assert supported_operator_ids("nvidia") == supported_operator_ids("ascend-cann900")
+    from benchmark.nvidia_matrix.config import ALL_DISTRIBUTIONS
+
+    assert supported_operator_ids("nvidia") == set(ALL_DISTRIBUTIONS)
 
 
 def test_corex_family_selection_and_command_keep_current_16_apis(tmp_path) -> None:

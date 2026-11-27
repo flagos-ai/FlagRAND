@@ -49,11 +49,10 @@ def main(argv=None):
 
         prepare_mtgp32_baseline(run_directory / "native-build/mtgp32")
         mtgp32_build = baseline_build_record()
-    if args.platform == "iluvatar" and any(op.startswith("mrg32k3a_") or op.endswith("_poisson") for op in operators):
-        from benchmark.corex_matrix.corrected_build import baseline_build_record, prepare_corrected_baseline
+    if args.platform == "iluvatar":
+        from benchmark.corex_matrix.corrected_build import prepare_operator_references
 
-        prepare_corrected_baseline(run_directory / "native-build/corex-corrected")
-        corex_build = baseline_build_record()
+        corex_build = prepare_operator_references(operators, run_directory / "native-build/corex-corrected")
     native_support = json.loads(args.native_support.read_text()) if args.native_support is not None else {}
     if args.platform == "thead" and native_support:
         os.environ["FLAGRAND_ACRAND_PATH"] = native_support["environment"]["native_library"]
@@ -118,6 +117,10 @@ def main(argv=None):
     }
     if mtgp32_build is not None:
         manifest["native_build"] = {"ppu_sdk_mtgp32_device": mtgp32_build}
+    if args.platform == "iluvatar" and "corex_curand" in baseline_names:
+        from benchmark.corex_matrix.baseline import corex_stock_metadata
+
+        manifest["corex_stock"] = corex_stock_metadata()
     if corex_build is not None:
         manifest["native_build"] = {"corex_sdk_corrected": corex_build}
     records = []

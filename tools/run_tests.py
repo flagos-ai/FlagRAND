@@ -173,7 +173,7 @@ def get_ops_to_test(
 
 
 def detect_platform() -> str:
-    configured = os.environ.get("FLAGRAND_PLATFORM")
+    configured = os.environ.get("FLAGRAND_PLATFORM") or os.environ.get("FLAGOS_GPU_VENDOR")
     if configured:
         name = configured.strip().lower()
         if name not in PLATFORM_ALIASES:
@@ -872,12 +872,10 @@ def main(argv: list[str] | None = None) -> int:
     pinfo(f"Testing {len(operators)} operators on devices {gpu_ids} ...")
     pinfo(f"Results ... {config.output_dir}")
 
-    if selected_platform == "iluvatar" and any(
-        str(op["id"]).startswith("mrg32k3a_") or str(op["id"]).endswith("_poisson") for op in operators
-    ):
-        from benchmark.corex_matrix.corrected_build import prepare_corrected_baseline
+    if selected_platform == "iluvatar":
+        from benchmark.corex_matrix.corrected_build import prepare_operator_references
 
-        prepare_corrected_baseline(config.output_dir / "native-build/corex-corrected")
+        prepare_operator_references((op["id"] for op in operators), config.output_dir / "native-build/corex-corrected")
 
     if selected_platform == "iluvatar" and any(str(op["id"]).startswith("mtgp32_") for op in operators):
         pinfo("Preparing the CoreX Tensor copy extension ...")

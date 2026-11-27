@@ -32,12 +32,17 @@ backends:
       - numpy<2
 
   iluvatar:
-    python: "3.10"
+    # Both published vendor wheel pairs are cp312; prepared images use their own Python.
+    python: "3.12"
     triton:
       - triton==3.1.0+corex.4.4.0
     deps:
       - torch==2.7.1+corex.4.4.0
       - numpy<2
+    sdk_wheels:
+      "4.5.0.20260804":
+        triton: ["triton==3.2.0+corex.4.5.0.20260804"]
+        deps: ["torch==2.10.0+corex.4.5.0.20260804", "numpy<2"]
 
   thead:
     python: "3.12"

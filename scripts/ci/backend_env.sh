@@ -42,7 +42,7 @@ case "$BACKEND" in
         export FLAGRAND_VENDOR=ascend
         ;;
     iluvatar)
-        export COREX_HOME=/usr/local/corex
+        export COREX_HOME="${COREX_HOME:-${COREX_ROOT:-/usr/local/corex}}"
         export CUDA_HOME="$COREX_HOME"
         export PATH="$COREX_HOME/bin:$PATH"
         export LD_LIBRARY_PATH="$COREX_HOME/lib:$COREX_HOME/lib64:${LD_LIBRARY_PATH:-}"
