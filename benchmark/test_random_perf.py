@@ -14,12 +14,7 @@ import pytest
 
 from benchmark.nvidia_matrix.config import ALL_DISTRIBUTIONS
 from benchmark.rng_delivery.config import OPERATORS
-from tools.run_tests import (
-    RunnerConfig,
-    detect_platform,
-    run_performance,
-    supported_operator_ids,
-)
+from tools.run_tests import RunnerConfig, detect_platform, run_performance, supported_operator_ids
 
 LOGGER = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
