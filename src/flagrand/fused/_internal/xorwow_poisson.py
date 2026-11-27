@@ -13,7 +13,7 @@ import triton
 import triton.language as tl
 from triton.runtime.driver import driver
 
-from flagrand.fused.poisson import _sample_alias
+from flagrand.fused.poisson import LEGACY_COREX_POISSON, _sample_alias
 from flagrand.rng._xorwow.kernels import _next
 from flagrand.runtime.backend import get_vendor_info
 from flagrand.runtime.compiled_launcher import CachedKernelLauncher
@@ -127,14 +127,15 @@ def launch_xorwow_poisson(engine, out, threshold, aliases, first, size, block_si
     """Launch for an even number of fixed XORWOW streams; do not change offset."""
     state = engine.ensure_state(out.device)
     n = out.numel()
-    if get_vendor_info().vendor_name in ("thead", "iluvatar"):
+    vendor = get_vendor_info().vendor_name
+    if vendor == "thead" or (vendor == "iluvatar" and LEGACY_COREX_POISSON):
         prepared = _prepared_launch(out.device, n, engine.nstreams, first, size, block_size, num_warps)
         compiled = prepared.launch(state, out, threshold, aliases)
         if capture is not None:
             capture(prepared, compiled, (state, out, threshold, aliases, n), 1, None)
         return out
     grid = (triton.cdiv(min(n, engine.nstreams // 2), block_size),)
-    if get_vendor_info().vendor_name == "hygon":
+    if vendor == "hygon":
         launcher = _launcher()
         args = (state, out, threshold, aliases, n)
         constants = (engine.nstreams, first, size, block_size)

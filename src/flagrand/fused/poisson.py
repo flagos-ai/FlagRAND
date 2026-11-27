@@ -54,6 +54,11 @@ def _philox_poisson(
     tl.store(out + 2 * i + 1, y, 2 * i + 1 < n)
 
 
+# CoreX 4.4 exposes the specialization helper used by its prepared launch.
+# FlagTree's per-device JIT binds the arguments and selects the current stream.
+LEGACY_COREX_POISSON = not hasattr(_philox_poisson, "device_caches") and hasattr(triton.runtime.jit, "compute_spec_key")
+
+
 @triton.jit
 def _raw_poisson(
     raw,
@@ -129,7 +134,7 @@ def generate_poisson(engine, out, lam: float, *, block_size=None, num_warps=None
     threshold, aliases, first = _DEVICE_TABLES[key]
     size = threshold.numel()
     if isinstance(engine, PhiloxGenerator):
-        if get_vendor_info().vendor_name == "iluvatar":
+        if get_vendor_info().vendor_name == "iluvatar" and LEGACY_COREX_POISSON:
             from flagrand.fused._internal.philox_poisson import launch_philox_poisson
 
             launch_philox_poisson(engine, out, threshold, aliases, first, size, block_size, num_warps, capture=_capture)
@@ -192,7 +197,13 @@ def generate_poisson(engine, out, lam: float, *, block_size=None, num_warps=None
         from flagrand.fused._internal.mrg32k3a_poisson import launch_mrg32k3a_poisson
 
         launch_mrg32k3a_poisson(
-            engine, out, threshold, aliases, first, size, block_size=block_size // 2,
+            engine,
+            out,
+            threshold,
+            aliases,
+            first,
+            size,
+            block_size=block_size // 2,
             num_warps=2 if get_vendor_info().vendor_name == "hygon" and requested_warps is None else num_warps,
             capture=_capture,
         )

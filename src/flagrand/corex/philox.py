@@ -107,7 +107,8 @@ def _box_muller_f32(raw0, raw1):
     return radius * tl.cos(angle), radius * tl.sin(angle)
 
 
-@triton.jit
+# The advancing counter must keep its runtime ABI when its value is one.
+@triton.jit(do_not_specialize=["base_counter"])
 def _uniform_aligned_kernel(out, seed, base_counter, n_counters, BLOCK: tl.constexpr):
     counter_offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = counter_offset < n_counters
@@ -131,7 +132,7 @@ def _uniform_generic_kernel(out, seed, offset, n, BLOCK: tl.constexpr):
     tl.store(out + index, _uniform_f32(raw), mask=mask)
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["base_counter"])
 def _uniform_f64_aligned_kernel(out, seed, base_counter, n_counters, BLOCK: tl.constexpr):
     counter_offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = counter_offset < n_counters
@@ -141,7 +142,7 @@ def _uniform_f64_aligned_kernel(out, seed, base_counter, n_counters, BLOCK: tl.c
     tl.store(out + base + 1, _uniform_f64(w2, w3), mask=mask)
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["base_counter"])
 def _uniform_f64_generic_kernel(
     out,
     seed,
@@ -159,7 +160,7 @@ def _uniform_f64_generic_kernel(
     tl.store(out + base + 1, _uniform_f64(w2, w3), mask=mask & (base + 1 < n))
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["base_counter"])
 def _normal_aligned_kernel(
     out,
     seed,

@@ -36,7 +36,8 @@ def _philox_window4(seed, counter, SHIFT: tl.constexpr):
     return a3, b0, b1, b2
 
 
-@triton.jit
+# The advancing counter must keep its runtime ABI when its value is one.
+@triton.jit(do_not_specialize=["base_counter"])
 def _philox_kernel(out_ptr, seed, base_counter, n, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
@@ -55,7 +56,7 @@ def _philox_kernel(out_ptr, seed, base_counter, n, BLOCK: tl.constexpr):
     tl.store(out_ptr + base, tile.to(tl.int32, bitcast=True), mask=mask[:, None])
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["base_counter"])
 def _philox_generic_kernel(
     out_ptr,
     seed,
@@ -87,7 +88,7 @@ if HAS_LIBTUNER:
         warmup=10,
         rep=30,
     )
-    @triton.jit
+    @triton.jit(do_not_specialize=["base_counter"])
     def _philox_kernel_tuned(
         out_ptr,
         seed,

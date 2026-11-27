@@ -13,6 +13,7 @@ from flagrand._curand_handle import (
     set_generator_offset,
     set_pseudo_random_generator_seed,
 )
+from flagrand.fused.poisson import LEGACY_COREX_POISSON
 from flagrand.fused.poisson import generate_poisson as _poisson
 from flagrand.runtime.backend import get_vendor_info
 
@@ -67,7 +68,7 @@ def generate_poisson(generator: CurandGenerator, out: torch.Tensor, lam: float, 
     if generator.rng_type != CURAND_RNG_PSEUDO_MTGP32:
         dispatch = getattr(generator, "_iluvatar_poisson_dispatch", None)
         if dispatch is None:
-            if get_vendor_info().vendor_name == "iluvatar":
+            if get_vendor_info().vendor_name == "iluvatar" and LEGACY_COREX_POISSON:
                 from flagrand.fused._internal.poisson_iluvatar_host import generate_poisson as dispatch
             elif get_vendor_info().vendor_name == "hygon":
                 from flagrand.fused._internal.poisson_hygon_host import generate_poisson as dispatch

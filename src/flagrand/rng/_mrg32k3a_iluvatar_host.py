@@ -65,8 +65,11 @@ def capture(engine, out, distribution, mean, stddev, backend, prepared, compiled
         engine._corex_recent_plan = None
         return
     kernel = prepared.launcher._kernel
+    # FlagTree's device_caches ABI needs its launcher wrapper and full bound
+    # arguments. Keep using prepared.launch for that ABI on subsequent calls.
     if (
-        kernel.debug
+        hasattr(kernel, "device_caches")
+        or kernel.debug
         or getattr(compiled, "launch_enter_hook", None) is not None
         or getattr(compiled, "launch_exit_hook", None) is not None
     ):

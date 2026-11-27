@@ -7,6 +7,7 @@ import triton
 import triton.language as tl
 from triton.runtime.jit import mangle_type
 
+from flagrand.fused.poisson import LEGACY_COREX_POISSON
 from flagrand.rng.mrg32k3a import _mrg32k3a_step, _mrg32k3a_step_u32
 from flagrand.runtime.compiled_launcher import CachedKernelLauncher
 
@@ -149,8 +150,13 @@ def _prepared(device, n, nstreams, first, size, block_size, num_warps):
 
 def launch_mrg_poisson(engine, out, threshold, aliases, first, size, block_size, num_warps, *, capture=None):
     state = engine.ensure_state(out.device)
-    plan = _prepared(out.device, out.numel(), engine.nstreams, first, size, block_size, num_warps)
+    n = out.numel()
     cursor = engine._cursor
+    if not LEGACY_COREX_POISSON:
+        grid = (triton.cdiv(min(n, engine.nstreams // 2), block_size),)
+        args = (state, out, threshold, aliases, n, cursor, engine.nstreams, first, size, block_size, True)
+        return mrg_poisson_pair[grid](*args, num_warps=num_warps)
+    plan = _prepared(out.device, n, engine.nstreams, first, size, block_size, num_warps)
     compiled = plan.launch(state, out, threshold, aliases, cursor)
     if capture is not None:
         capture(plan, compiled, (state, out, threshold, aliases, plan.n, cursor), 1, 5)
